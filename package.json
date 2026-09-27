@@ -1,0 +1,14 @@
+{
+  "name": "acorn",
+  "private": true,
+  "description": "ACORN — Autonomous Configurable Outdoor Replay Node",
+  "type": "module",
+  "scripts": {
+    "dev": "node dev/server.mjs",
+    "dev:lan": "node dev/server.mjs --host 0.0.0.0",
+    "build:web": "node tools/build-web.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,23 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Node (no dependencies today, but keep it clean if any are added)
+node_modules/
+npm-debug.log*
+
+# Generated web assets (regenerate with `npm run build:web`)
+build/
+
+# Arduino / PlatformIO build output
+.pio/
+arduino/**/build/
+*.elf
+*.map
+
+# Logs
+*.log
