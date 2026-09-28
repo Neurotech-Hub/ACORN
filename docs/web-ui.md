@@ -47,7 +47,14 @@ npm run dev:lan        # bind 0.0.0.0 to test on a phone on the same network
 ```
 
 Options: `--port 8080`, `--host 127.0.0.1`, `--scenario <name>`, `--latency <ms>` (default 150,
-simulates the ESP32 round-trip), `--dist` (serve the gzipped firmware build, see §5).
+simulates the ESP32 round-trip), `--dist` (serve the gzipped firmware build with ETag/304, see §5),
+`--proxy http://192.168.4.1` (send `/api/*` to a real device instead of the mock, including
+uploads; join the device AP first). With `--proxy` you can iterate on `web/` against real
+hardware without reflashing:
+
+```bash
+node dev/server.mjs --proxy http://192.168.4.1   # UI from web/, API from the device
+```
 
 ### Fault scenarios
 
@@ -153,8 +160,10 @@ Error codes used in addition to `init.md` §48: `AUDIO_IN_USE`, `AUDIO_NAME_TOO_
 Mock limits (to be confirmed by memory testing in Phase 3, `init.md` §55): 16 programs,
 32 events/program, name 48 chars, description 200, audio filename 32, scheduling guard 2 s.
 
-**Open decision for Phase 4:** the mock does *not* count `GET /status` polling as AP activity,
-so an idle open page still times out after 10 min (with a 60 s "Stay connected" warning).
+**AP activity (decided in Phase 4):** neither `GET /status` polling nor a connected phone counts as
+activity, on the mock or the device. Any other API request does, including `POST /session/extend`.
+An idle open page therefore still times out after 10 min, with a 60 s "Stay connected" warning.
+The device also ends the session when the enclosure door closes.
 
 ---
 
@@ -168,8 +177,11 @@ mode and is updated together with firmware via OTA.
 ```bash
 npm run build:web
 # or write the header straight into the firmware tree:
-node tools/build-web.mjs --header arduino/acorn/src/web/web_assets.h
+npm run build:web:firmware   # = node tools/build-web.mjs --header arduino/acorn/src/web/web_assets.h
 ```
+
+`arduino/acorn/src/web/web_assets.h` is committed, so the sketch builds without Node (for example,
+from the Arduino IDE). `arduino/compile-tests.sh` regenerates it before every compile.
 
 Output:
 
@@ -187,35 +199,33 @@ npm run build:web && node dev/server.mjs --dist
 
 ### 5.2 Serve from the firmware
 
-Sketch for ESPAsyncWebServer (adjust to the server library chosen in Phase 2; some forks
-rename `beginResponse_P` to `beginResponse`):
+The firmware uses the arduino-esp32 core `WebServer`
+([`arduino/acorn/src/api/WebUi.cpp`](../arduino/acorn/src/api/WebUi.cpp)). `/api/v1/*` goes to
+`ApiServer`'s request handler, and every other request lands in the not-found handler, which
+calls `WebUi::serve()`. The essential part:
 
 ```cpp
-#include <ESPAsyncWebServer.h>
+#include <WebServer.h>
 #include "web/web_assets.h"
 
-static void sendAsset(AsyncWebServerRequest *req, const WebAsset &a) {
-  if (req->hasHeader("If-None-Match") && req->header("If-None-Match") == a.etag) {
-    req->send(304);
-    return;
-  }
-  AsyncWebServerResponse *res = req->beginResponse_P(200, a.mime, a.data, a.length);
-  res->addHeader("Content-Encoding", "gzip");
-  res->addHeader("ETag", a.etag);
-  res->addHeader("Cache-Control", "no-cache");  // revalidate via ETag; UI changes with firmware
-  req->send(res);
-}
+// Once, when the server is created: the core WebServer only keeps listed headers.
+static const char *headers[] = {"If-None-Match"};
+server.collectHeaders(headers, 1);
 
-void registerWebUi(AsyncWebServer &server) {
-  for (size_t i = 0; i < WEB_ASSET_COUNT; i++) {
-    const WebAsset *a = &WEB_ASSETS[i];
-    server.on(a->path, HTTP_GET, [a](AsyncWebServerRequest *req) { sendAsset(req, *a); });
-    if (strcmp(a->path, "/index.html") == 0) {
-      server.on("/", HTTP_GET, [a](AsyncWebServerRequest *req) { sendAsset(req, *a); });
-    }
+bool serveAsset(WebServer &s, const WebAsset &a) {
+  s.sendHeader("ETag", a.etag);
+  s.sendHeader("Cache-Control", "no-cache");  // revalidate via ETag; UI changes with firmware
+  if (s.header("If-None-Match") == a.etag) {
+    s.send(304);
+    return true;
   }
+  s.sendHeader("Content-Encoding", "gzip");
+  s.send_P(200, a.mime, reinterpret_cast<const char *>(a.data), a.length);  // straight from flash
+  return true;
 }
 ```
+
+`/` maps to `/index.html`. Unknown paths get a plain-text 404.
 
 Requirements for the firmware side:
 
@@ -228,15 +238,22 @@ Requirements for the firmware side:
    Stream to SD / the OTA partition; don't buffer whole files in RAM.
 5. For `POST /firmware`, send the JSON response *before* restarting (e.g. restart from a
    short timer), so the browser receives `{ ok: true }` and starts its reconnect loop.
-6. Optional: a captive-portal redirect for unknown hosts to `/` makes the UI open
-   automatically on phones joining the AP (TBD with the Hall/config-mode design).
+6. Captive portal: while the AP runs, a wildcard DNS server resolves every name to
+   `192.168.4.1`. Operating-system connectivity probes (`/generate_204`, `/hotspot-detect.html`,
+   `/connecttest.txt`, `/ncsi.txt`, `/canonical.html`, `/success.txt`, ...) and any non-API request
+   with a foreign `Host` get `302 → http://192.168.4.1/`, so phones open the UI when they join
+   `ACORN-xxxxxx`. `/api/v1/*` is never redirected.
 
 ### 5.3 Workflow
 
 ```text
 edit web/ ──► npm run dev (mock) ──► iterate
+         ├──► node dev/server.mjs --proxy http://192.168.4.1 (real device API)
          └──► npm run build:web ──► node dev/server.mjs --dist (verify)
-                                └──► web_assets.h into firmware ──► build/flash or OTA
+                                └──► npm run build:web:firmware ──► build/flash or OTA
 ```
+
+`node tools/api-contract.mjs --base <url>` checks the API, the gzip/ETag/304 asset handling and
+(against `http://192.168.4.1`) the captive-portal redirect.
 
 Treat `web_assets.h` as a build artifact: regenerate it rather than editing it.

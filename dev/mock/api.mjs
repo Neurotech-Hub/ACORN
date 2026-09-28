@@ -2,7 +2,7 @@
 
 import { parseMultipart, inspectWav, inspectFirmware } from './binary.mjs';
 import { LIMITS, programRevision, preview } from './state.mjs';
-import { isoUtc } from './scheduler.mjs';
+import { isoUtc, parseHms } from './scheduler.mjs';
 
 const MAX_UPLOAD = 16 * 1024 * 1024;
 
@@ -47,6 +47,29 @@ function programInvalid(res, errors) {
 
 function normalizeProgram(p) {
   return { ...p, schema_version: p.schema_version ?? 1, description: p.description ?? '', events: p.events ?? [] };
+}
+
+const hms = (s) => {
+  const ms = parseHms(s);
+  if (ms == null) return s;
+  const t = ms / 1000;
+  return [Math.floor(t / 3600), Math.floor((t % 3600) / 60), t % 60].map((n) => String(n).padStart(2, '0')).join(':');
+};
+
+// The form the firmware writes on save (ProgramJson::toJson): times as HH:MM:SS,
+// known fields only. Applied after validation, so every field is well-formed.
+function storedProgram(p) {
+  return {
+    schema_version: p.schema_version, id: p.id, name: p.name, description: p.description,
+    events: p.events.map((e) => (e.type === 'point'
+      ? { event_id: e.event_id, type: 'point', time: hms(e.time), audio: e.audio, volume: e.volume }
+      : {
+        event_id: e.event_id, type: 'range', start: hms(e.start), end: hms(e.end), audio: e.audio, volume: e.volume,
+        recurrence: e.recurrence.type === 'random'
+          ? { type: 'random', min_interval_seconds: e.recurrence.min_interval_seconds, max_interval_seconds: e.recurrence.max_interval_seconds }
+          : { type: 'fixed', interval_seconds: e.recurrence.interval_seconds },
+      })),
+  };
 }
 
 export async function handleApi(req, res, url, ctx) {
@@ -175,6 +198,7 @@ export async function handleApi(req, res, url, ctx) {
         if (dev.programs.size >= LIMITS.MAX_PROGRAMS) return fail(res, 422, 'PROGRAM_LIMIT_EXCEEDED', `At most ${LIMITS.MAX_PROGRAMS} programs can be stored.`);
         const errors = dev.validate(p);
         if (errors.length) return programInvalid(res, errors);
+        p = storedProgram(p);
         p.modified_utc = isoUtc(dev.nowMs());
         dev.programs.set(p.id, p);
         return ok(res, { program: p, summary: dev.programSummary(p) }, 201);
@@ -191,7 +215,8 @@ export async function handleApi(req, res, url, ctx) {
         const p = body ? normalizeProgram(body) : stored;
         if (!p) return fail(res, 404, 'PROGRAM_NOT_FOUND', `Program '${id}' not found.`);
         const errors = dev.validate(p);
-        return ok(res, { valid: errors.length === 0, revision: programRevision(p), errors });
+        // Like the firmware: a valid program is hashed in its stored (normalized) form.
+        return ok(res, { valid: errors.length === 0, revision: programRevision(errors.length ? p : storedProgram(p)), errors });
       }
       if (action === 'preview' && (m === 'GET' || m === 'POST')) {
         const body = m === 'POST' ? await readJson(req) : undefined;
@@ -201,9 +226,10 @@ export async function handleApi(req, res, url, ctx) {
         const errors = dev.validate(p);
         if (errors.length) return programInvalid(res, errors);
         const count = Math.min(500, Math.max(1, parseInt(url.searchParams.get('count') || '100', 10)));
+        const norm = storedProgram(p);
         return ok(res, {
-          revision: programRevision(p), from_utc: isoUtc(dev.nowMs()), utc_offset_minutes: dev.utcOffsetMinutes,
-          events: preview(p, dev.utcOffsetMinutes, dev.nowMs(), count),
+          revision: programRevision(norm), from_utc: isoUtc(dev.nowMs()), utc_offset_minutes: dev.utcOffsetMinutes,
+          events: preview(norm, dev.utcOffsetMinutes, dev.nowMs(), count),
         });
       }
       if (action === 'activate' && m === 'POST') {
@@ -225,6 +251,7 @@ export async function handleApi(req, res, url, ctx) {
           if (p.id !== id) return fail(res, 422, 'PROGRAM_JSON_INVALID', 'Program ID cannot be changed. Duplicate the program instead.', 'id');
           const errors = dev.validate(p);
           if (errors.length) return programInvalid(res, errors);
+          p = storedProgram(p);
           p.modified_utc = isoUtc(dev.nowMs());
           dev.programs.set(id, p);
           return ok(res, { program: p, summary: dev.programSummary(p), applied: id === dev.activeId });

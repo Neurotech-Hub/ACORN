@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "node dev/server.mjs",
     "dev:lan": "node dev/server.mjs --host 0.0.0.0",
-    "build:web": "node tools/build-web.mjs"
+    "build:web": "node tools/build-web.mjs",
+    "build:web:firmware": "node tools/build-web.mjs --header arduino/acorn/src/web/web_assets.h"
   },
   "engines": {
     "node": ">=18"

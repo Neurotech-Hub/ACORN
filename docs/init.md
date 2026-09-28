@@ -1204,6 +1204,8 @@ The exact meaning of **broadcasting** remains TBD:
 
 Do not infer this in v1 implementation until clarified.
 
+**Resolved (see section 69):** broadcasting means the Wi-Fi AP is running.
+
 ---
 
 # 33. Battery Service
@@ -1529,6 +1531,8 @@ Active UI/API activity may extend the session.
 The exact mechanism by which opening the enclosure/Hall sensor starts configuration mode is **TBD**.
 
 Do not permanently couple Hall behavior to the web server until the enclosure activation state machine is defined.
+
+**Resolved (see section 69):** door open starts the AP; door close or the 10-minute idle timeout ends it (Phase 4).
 
 ---
 
@@ -2493,7 +2497,7 @@ play every 10 minutes
 
 Do not silently decide these during implementation.
 
-### TBD — LED_G
+### RESOLVED — LED_G
 
 Meaning of:
 
@@ -2501,9 +2505,9 @@ Meaning of:
 "LED_G on while broadcasting"
 ```
 
-must be clarified.
+Resolved: "broadcasting" means the Wi-Fi configuration AP is running. LED_G is on exactly while the AP is up and is always off in sleep. `WifiService` is the only code path that starts/stops the AP and the only caller of `LedService::setBroadcasting()`.
 
-### TBD — Hall / enclosure behavior
+### RESOLVED — Hall / enclosure behavior
 
 Final relationship between:
 
@@ -2514,11 +2518,11 @@ configuration AP
 device activation
 ```
 
-is not yet specified.
+Resolved: opening the door (MAG_OUT HIGH, which also wakes the device from deep sleep) starts the configuration AP and web server. The session ends when the door closes or after 10 minutes without client activity, then the device returns to event-driven sleep. Implemented in Phase 4 (`ConfigSession`; behavior in `docs/hardware.md` "Configuration mode"). A door left open when the session ends is armed to wake the device on door close.
 
-### TBD — TRIG_IN
+### RESOLVED — TRIG_IN
 
-No v1 behavior currently assigned.
+Unused in v1. No behavior is assigned; the pin is left as an input (its reset default) and the firmware does not otherwise touch it.
 
 ### TBD — Additional button state machine
 
@@ -2528,9 +2532,11 @@ BTN_01 and BTN_02 have initial functions, but additional long-press/multi-functi
 
 All unspecified pin assignments come from the updated netlist.
 
-### TBD — Final audio calibration
+### DEFERRED — Final audio calibration
 
 The relationship between UI volume units and calibrated acoustic SPL may be expanded later.
+
+Deferred until the hardware prototype arrives. Volume remains 0–100 UI units until then.
 
 ### TBD — Sunrise/sunset
 

@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 // ACORN UI dev server: serves web/ exactly as the device will, plus a mock /api/v1.
 // Usage: node dev/server.mjs [--port 8080] [--host 127.0.0.1] [--scenario normal] [--latency 150] [--dist]
+//                            [--proxy http://192.168.4.1]
 
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { MockDevice, SCENARIOS } from './mock/state.mjs';
@@ -16,6 +18,8 @@ const args = Object.fromEntries(
 );
 // --dist serves the gzipped output of tools/build-web.mjs, byte-for-byte what the firmware embeds.
 const DIST = !!args.dist;
+// --proxy http://192.168.4.1 sends /api/* to a real device instead of the mock.
+const PROXY = typeof args.proxy === 'string' ? args.proxy : null;
 const ROOT = DIST ? path.join(REPO, 'build', 'web') : path.join(REPO, 'web');
 const PORT = +(args.port || process.env.PORT || 8080);
 const HOST = args.host || '127.0.0.1';
@@ -41,6 +45,33 @@ const ctx = {
 };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// --proxy: forward /api/* (bodies and multipart uploads streamed) to a real device.
+function proxyApi(req, res, url) {
+  const target = new URL(url.pathname + url.search, PROXY);
+  const t0 = Date.now();
+  const upstream = http.request(target, { method: req.method, headers: { ...req.headers, host: target.host } }, (up) => {
+    res.writeHead(up.statusCode, up.headers);
+    up.pipe(res);
+    up.on('end', () => {
+      if (url.pathname !== '/api/v1/status') console.log(`${req.method} ${url.pathname}${url.search} -> device ${up.statusCode} (${Date.now() - t0}ms)`);
+    });
+  });
+  upstream.on('error', (e) => {
+    console.log(`${req.method} ${url.pathname} -> device unreachable: ${e.message}`);
+    if (res.headersSent) return res.destroy();
+    res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ ok: false, error: { code: 'DEVICE_UNREACHABLE', message: `Device unreachable: ${e.message}`, details: {} } }));
+  });
+  req.pipe(upstream);
+}
+
+// Same strong ETag as tools/build-web.mjs (hash of the uncompressed file), so
+// --dist also exercises the device's If-None-Match / 304 handling.
+async function etagFor(rel) {
+  const raw = await readFile(path.join(REPO, 'web', rel));
+  return '"' + createHash('sha1').update(raw).digest('hex').slice(0, 12) + '"';
+}
 
 function devPage() {
   const cur = ctx.device.scenario;
@@ -79,6 +110,8 @@ const server = http.createServer(async (req, res) => {
     return res.end();
   }
 
+  if (PROXY && url.pathname.startsWith('/api/')) return proxyApi(req, res, url);
+
   if (url.pathname.startsWith('/api/')) {
     if (Date.now() < ctx.rebootUntil) return req.socket.destroy();
     if (LATENCY) await sleep(LATENCY * (0.6 + Math.random() * 0.8));
@@ -94,10 +127,15 @@ const server = http.createServer(async (req, res) => {
   if (!file.startsWith(ROOT)) { res.writeHead(403); return res.end(); }
   try {
     const data = await readFile(DIST ? file + '.gz' : file);
+    const etag = DIST ? await etagFor(rel) : null;
+    if (etag && req.headers['if-none-match'] === etag) {
+      res.writeHead(304, { ETag: etag, 'Cache-Control': 'no-cache' });
+      return res.end();
+    }
     res.writeHead(200, {
       'Content-Type': MIME[path.extname(file)] || 'application/octet-stream',
       'Cache-Control': 'no-cache',
-      ...(DIST ? { 'Content-Encoding': 'gzip' } : {}),
+      ...(DIST ? { 'Content-Encoding': 'gzip', ETag: etag } : {}),
     });
     res.end(data);
   } catch {
@@ -108,6 +146,11 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, HOST, () => {
   const shown = HOST === '0.0.0.0' ? 'localhost' : HOST;
+  if (PROXY) {
+    console.log(`\n  ACORN UI (device proxy)  http://${shown}:${PORT}/`);
+    console.log(`  /api/* -> ${PROXY}${DIST ? ' · serving gzipped build/web' : ''}\n`);
+    return;
+  }
   console.log(`\n  ACORN UI (mock device)   http://${shown}:${PORT}/`);
   console.log(`  Scenario switcher        http://${shown}:${PORT}/__dev`);
   console.log(`  Scenario: ${ctx.device.scenario} · latency ~${LATENCY}ms${DIST ? ' · serving gzipped build/web' : ''}\n`);
