@@ -1,6 +1,7 @@
 #include "AudioHardware.h"
 
 #include <ESP_I2S.h>
+#include <driver/gpio.h>
 #include <math.h>
 
 #include "GpioHold.h"
@@ -22,18 +23,15 @@ bool ampOn = false;
 uint32_t rate = DEFAULT_SAMPLE_RATE;
 int16_t stereo[CHUNK_FRAMES * 2];
 
+// OFF = high-Z so the 100k hardware pulldown holds SD/FAULT LOW (see Pins.h).
 void setAmp(bool enable) {
   ampOn = enable;
   if (enable) {
-    if (level::AMP_SHDN_OPEN_DRAIN) {
-      digitalWrite(pins::AMP_SHDN, HIGH);
-      pinMode(pins::AMP_SHDN, OUTPUT_OPEN_DRAIN);
-    } else {
-      pinMode(pins::AMP_SHDN, OUTPUT);
-    }
+    digitalWrite(pins::AMP_SHDN, level::AMP_ENABLED);
+    pinMode(pins::AMP_SHDN, OUTPUT);
     digitalWrite(pins::AMP_SHDN, level::AMP_ENABLED);
   } else {
-    digitalWrite(pins::AMP_SHDN, !level::AMP_ENABLED);
+    pinMode(pins::AMP_SHDN, INPUT);
   }
 }
 
@@ -49,7 +47,8 @@ bool startI2s(uint32_t sampleRate) {
 }  // namespace
 
 void begin() {
-  releaseOutput(pins::AMP_SHDN, !level::AMP_ENABLED);
+  gpio_hold_dis(static_cast<gpio_num_t>(pins::AMP_SHDN));  // older firmware latched it LOW in sleep
+  setAmp(false);
   releaseOutput(pins::DAC_XSMT, !level::DAC_UNMUTED);
   releaseOutput(pins::SW_3V3_EN, !level::SW_3V3_ON);
   powered = false;
@@ -106,10 +105,9 @@ void powerDown() {
 bool isPoweredUp() { return powered; }
 uint32_t sampleRate() { return rate; }
 
-bool ampFaulted() {
-  if (!level::AMP_SHDN_OPEN_DRAIN || !ampOn) return false;
-  return digitalRead(pins::AMP_SHDN) != level::AMP_ENABLED;
-}
+// While enabled the GPIO drives HIGH through the 5.1k series resistor, so it
+// reads back its own level, not the SD/FAULT node: a fault cannot be seen here.
+bool ampFaulted() { return false; }
 
 int32_t volumeToGainQ15(uint8_t volume) {
   if (volume > 100) volume = 100;
@@ -168,8 +166,7 @@ bool playTone(uint16_t frequencyHz, uint32_t durationMs, uint8_t volume) {
 }
 
 void prepareForSleep() {
-  powerDown();
-  holdOutput(pins::AMP_SHDN, !level::AMP_ENABLED);
+  powerDown();  // leaves AMP_SHDN high-Z: the 100k pulldown keeps the amp off in sleep
   holdOutput(pins::DAC_XSMT, !level::DAC_UNMUTED);
   holdOutput(pins::SW_3V3_EN, !level::SW_3V3_ON);
 }

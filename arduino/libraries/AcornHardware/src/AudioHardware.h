@@ -21,8 +21,9 @@ void powerDown();
 bool isPoweredUp();
 uint32_t sampleRate();
 
-// True if the amp is holding SD/FAULT LOW while enabled (OT/OC/DC fault).
-// Only meaningful with level::AMP_SHDN_OPEN_DRAIN.
+// Amp fault (SD/FAULT held LOW) readback. Always false on this board: the
+// GPIO drives SD/FAULT HIGH through a 5.1k series resistor and reads its own
+// level. Kept so callers need no change if a fault sense line is added.
 bool ampFaulted();
 
 // Blocking write of 16-bit mono PCM, duplicated to both DAC channels.
@@ -37,7 +38,8 @@ bool playTone(uint16_t frequencyHz, uint32_t durationMs, uint8_t volume);
 // Q15 gain for a 0..100 volume; exposed for tests/UI calibration.
 int32_t volumeToGainQ15(uint8_t volume);
 
-// Everything off and latched LOW for deep sleep.
+// Everything off for deep sleep: rail and DAC mute latched LOW, AMP_SHDN
+// high-Z (hardware pulldown).
 void prepareForSleep();
 
 }  // namespace AudioHardware

@@ -32,7 +32,7 @@ All pull-ups/pull-downs are in hardware. Firmware leaves internal pulls disabled
 | 35 | `I2S_BCK` | I2S bit clock | PCM5102A (no MCLK; DAC PLL from BCK) |
 | 36 | `I2S_LRCK` | I2S word clock | PCM5102A |
 | 37 | `I2S_DOUT` | I2S data | PCM5102A |
-| 38 | `AMP_SHDN` | TPA3138D2 `SD/FAULT` (pin 2) | **HIGH = enabled, LOW = shutdown (outputs Hi-Z)**. Also pulled LOW by the amp on OT/OC/DC fault |
+| 38 | `AMP_SHDN` | TPA3138D2 `SD/FAULT` (pin 2) via 5.1k series | **HIGH = enabled, LOW = shutdown (outputs Hi-Z)**. 100k pulldown on SD/FAULT: GPIO high-Z = amp off (boot, reset, sleep). Firmware: OFF = `INPUT`, ON = `OUTPUT` HIGH. The amp also pulls SD/FAULT LOW on OT/OC/DC fault |
 | 48 | `LED_G` | Green LED (D2) | ON exactly while the Wi-Fi AP is running (“broadcasting”); OFF during sleep |
 
 `AMP_MUTE` (formerly GPIO39) is **not populated**: muting is done with `DAC_XSMT` and `AMP_SHDN`.
@@ -67,10 +67,15 @@ ESP32 I2S ──► PCM5102A DAC (U4) ──► TPA3138D2 class-D amp (U7) ─�
               mute:  DAC_XSMT
 ```
 
-Power-up order: `3V3_SW_EN` HIGH → settle → start I2S clocks (silence) → `DAC_XSMT` HIGH → `AMP_SHDN` HIGH.  
-Power-down order: `AMP_SHDN` LOW → `DAC_XSMT` LOW → stop I2S → `3V3_SW_EN` LOW.
+Power-up order: `3V3_SW_EN` HIGH → settle → start I2S clocks (silence) → `DAC_XSMT` HIGH → `AMP_SHDN` HIGH (driven).  
+Power-down order: `AMP_SHDN` high-Z (pulldown → LOW) → `DAC_XSMT` LOW → stop I2S → `3V3_SW_EN` LOW.
 
-TPA3138D2 notes for audio development ([datasheet](https://www.ti.com/lit/ds/symlink/tpa3138d2.pdf)): hold SD/FAULT LOW until the inputs are stable (avoids nuisance DC-detect faults and pops); enter shutdown before removing supply; SD/FAULT is also a fault output (reads LOW while the amp is faulted and auto-recovers). Gain is set in hardware via GAIN/SLV.
+```text
+GPIO38 ──5.1k──┬── SD/FAULT (TPA3138D2 pin 2)
+               └──100k── GND
+```
+
+TPA3138D2 notes for audio development ([datasheet](https://www.ti.com/lit/ds/symlink/tpa3138d2.pdf)): SD/FAULT must not float; hold it LOW until the inputs are stable (avoids nuisance DC-detect faults and pops); enter shutdown before removing supply. The 100k pulldown gives exactly this whenever GPIO38 is high-Z (boot, reset, deep sleep). SD/FAULT is also a fault output: the amp pulls it LOW while faulted and auto-recovers. The 5.1k series resistor limits the contention to about 0.65 mA when that happens while GPIO38 drives HIGH. Because GPIO38 reads back its own drive, firmware cannot detect amp faults (`AudioHardware::ampFaulted()` is always false). Gain is set in hardware via GAIN/SLV.
 
 ## Deep-sleep wake sources
 
@@ -97,4 +102,4 @@ A Hall wake reports `HALL` for either edge; firmware reads MAG_OUT at boot to te
 - **Door left open:** if the session timed out with the door still open, the device sleeps with the door-close wake armed. Button and RTC wakes do not restart the AP; the door must be closed and opened again.
 - **Bench mode:** building with `ACORN_STAY_AWAKE=1` keeps a permanent session (never times out, never sleeps).
 
-All GPIO outputs that must stay in a defined state during sleep (LEDs OFF, `AMP_SHDN` LOW, `DAC_XSMT` LOW, `3V3_SW_EN` LOW, `SD_CS` HIGH) are latched with GPIO hold before `esp_deep_sleep_start()` and released on the next boot.
+All GPIO outputs that must stay in a defined state during sleep (LEDs OFF, `DAC_XSMT` LOW, `3V3_SW_EN` LOW, `SD_CS` HIGH) are latched with GPIO hold before `esp_deep_sleep_start()` and released on the next boot. `AMP_SHDN` is left high-Z instead: the 100k pulldown on SD/FAULT keeps the amplifier shut down.

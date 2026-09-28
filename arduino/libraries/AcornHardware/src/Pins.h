@@ -48,11 +48,11 @@ constexpr uint8_t SW_3V3_ON = HIGH;
 constexpr uint8_t DAC_UNMUTED = HIGH;
 constexpr uint8_t AMP_ENABLED = HIGH;
 
-// TPA3138D2 SD/FAULT is bidirectional (the amp pulls it LOW on fault) and the
-// datasheet specifies a 4.7k-500k pull-up for the HIGH state, so the pin is
-// released (open drain) rather than driven HIGH. Set false if the board has
-// no pull-up on AMP_SHDN.
-constexpr bool AMP_SHDN_OPEN_DRAIN = true;
+// AMP_SHDN reaches TPA3138D2 SD/FAULT through a 5.1k series resistor, and
+// SD/FAULT has a 100k pulldown to GND. High-Z (INPUT) therefore means amp
+// OFF, which is also the state during boot, reset and deep sleep; driving
+// HIGH enables it. The series resistor limits contention (~0.65 mA) when the
+// amp pulls SD/FAULT LOW on a fault while the GPIO drives HIGH.
 
 }  // namespace level
 

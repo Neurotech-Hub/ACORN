@@ -78,12 +78,11 @@ void setup() {
                   AudioHardware::volumeToGainQ15(50) < AudioHardware::volumeToGainQ15(75));
 
   test::check("power up (rail, I2S, unmute, amp)", AudioHardware::powerUp());
-  test::check("amp not reporting fault", !AudioHardware::ampFaulted());
+  test::info("amp fault readback not available (AMP_SHDN drives SD/FAULT through 5.1k); listen instead");
   toneTest(1000, 1000);
   AudioHardware::writeSilence(200);
   toneTest(440, 500);
   toneTest(2000, 500);
-  test::check("amp not reporting fault after tones", !AudioHardware::ampFaulted());
 
   if (SdHardware::mount() == SdStatus::Ok) {
     String path = findWav("/audio");
@@ -112,7 +111,6 @@ void loop() {
     const uint16_t hz = haveLine && line.length() > 5 ? line.substring(5).toInt() : 1000;
     if (AudioHardware::powerUp()) {
       toneTest(hz ? hz : 1000, 1000);
-      if (AudioHardware::ampFaulted()) test::info("AMP FAULT reported on SD/FAULT");
       AudioHardware::powerDown();
     }
   }

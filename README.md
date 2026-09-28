@@ -58,14 +58,14 @@ brand/      logo and brand kit
 
 - [x] RTC, UTC time handling: MCP7940N driver, battery-backed "time set" marker, alarm on MFP, epoch/ISO conversion (`test_rtc`)
 - [x] SD card: SPI mount, detect, capacity, write check, `SD_*` error codes, WAV header validation (`test_sd`)
-- [x] Audio output: 3V3_SW_EN / I2S / DAC_XSMT / AMP_SHDN power sequence, tone generator, amp fault read (`test_audio`)
+- [x] Audio output: 3V3_SW_EN / I2S / DAC_XSMT / AMP_SHDN power sequence (high-Z = off via 100k pulldown, driven HIGH = on), tone generator (`test_audio`)
 - [x] Battery measurement: calibrated ADC, divider, invalid detection (`test_battery`)
 - [x] Temperature/humidity (SHT40, CRC checked) and ambient light (VEML6031X00, auto-range) (`test_sht40`, `test_light`, `test_i2c_scan`)
 - [x] LEDs, buttons, Hall sensor (`test_leds`, `test_buttons`, `test_hall`)
 - [x] Wi-Fi AP: open `ACORN-xxxxxx`, idle-timeout helper (`test_wifi_ap`)
 - [x] Deep sleep, wake sources: EXT0 Hall HIGH + EXT1 ANY_LOW buttons/RTC, GPIO hold (`test_sleep_wake`)
 - [x] OTA partition layout (2 × 6.25 MB slots) and update (`test_ota`)
-- [ ] On-board verification of every test sketch (confirm LED polarity and AMP_SHDN pull-up)
+- [ ] On-board verification of every test sketch (confirm LED polarity)
 - [x] Spec resolved: LED_G "broadcasting" = Wi-Fi AP running (on exactly while the AP is up)
 - [x] Spec resolved: Hall door open starts the configuration AP; door close or 10 min idle ends it (implemented in Phase 4)
 - [x] Spec resolved: TRIG_IN unused in v1

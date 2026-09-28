@@ -64,7 +64,7 @@ Each sketch exercises one component, prints `[PASS]` / `[FAIL]` / `[INFO]` lines
 | `test_sht40` | CRC vector, serial, T/RH plausibility | Breathe on sensor |
 | `test_light` | ID 0x0001, auto-ranged lux | Cover / illuminate sensor |
 | `test_sd` | detect, mount, capacity, write/read/delete, WAV header validation | Insert/remove card |
-| `test_audio` | volume curve, power sequence, tones, amp fault, WAV from SD | Listen for tone and pops; `vol`, `tone <hz>`, `wav` |
+| `test_audio` | volume curve, power sequence, tones, WAV from SD | Listen for tone and pops; `vol`, `tone <hz>`, `wav` |
 | `test_wifi_ap` | `ACORN-xxxxxx` open AP, client fetch, idle timeout (2 min in test) | Join AP, open `http://192.168.4.1/` |
 | `test_sleep_wake` | EXT0 Hall HIGH (or LOW = door close if left open), EXT1 ANY_LOW buttons + RTC MFP, timer; GPIO hold | Wake it each way, including door left open then closed; measure sleep current |
 | `test_ota` | partition layout, upload + verify + reboot into other slot | Upload a `.bin` at `http://192.168.4.1/` |
@@ -74,7 +74,7 @@ Sensors that fail report *invalid* (never zeros), matching the spec's `SENSOR_RE
 ### Bring-up assumptions to confirm
 
 - **LED polarity**: `level::LED_ON = HIGH` in `Pins.h` (GPIO → resistor → LED → GND). Flip it if `test_leds` shows inverted LEDs.
-- **AMP_SHDN drive**: released open-drain for HIGH (`level::AMP_SHDN_OPEN_DRAIN`) because the TPA3138D2 `SD/FAULT` pin also reports faults and expects a 4.7k–500k pull-up. If the board has no pull-up on AMP_SHDN, set it to `false` (push-pull).
+- **AMP_SHDN drive** (confirmed hardware: 5.1k series, 100k pulldown on SD/FAULT): OFF = `INPUT` (the pulldown shuts the amp down, including during boot and sleep), ON = `OUTPUT` HIGH. Amp faults cannot be read back through GPIO38, so `test_audio` relies on listening.
 - **Volume curve**: quadratic 0–100 → gain; SPL calibration is deferred until the prototype arrives.
 
 ## Host tests (no hardware)
