@@ -27,7 +27,7 @@ All pull-ups/pull-downs are in hardware. Firmware leaves internal pulls disabled
 | 14 | `SD_CLK` | microSD SPI clock | 33R series; 100k pulldown |
 | 15 | `SD_MOSI` | microSD MOSI/CMD | 100k pull-up |
 | 16 | `SD_MISO` | microSD MISO/DAT0 | 100k pull-up |
-| 17 | `3V3_SW_EN` | Switched 3.3 V (DAC/audio) | **HIGH = rail on** |
+| 17 | `3V3_SW_EN` | Switched 3.3 V (DAC/audio) | **LOW = rail on**. AO3401A P-FET, gate through 1k, 100k pulldown: gate LOW turns the rail on, so the pulldown leaves it on until firmware drives HIGH. Sleep holds this pin HIGH |
 | 18 | `DAC_XSMT` | PCM5102A soft mute | **LOW = mute**; 100k pulldown |
 | 35 | `I2S_BCK` | I2S bit clock | PCM5102A (no MCLK; DAC PLL from BCK) |
 | 36 | `I2S_LRCK` | I2S word clock | PCM5102A |
@@ -67,8 +67,8 @@ ESP32 I2S ──► PCM5102A DAC (U4) ──► TPA3138D2 class-D amp (U7) ─�
               mute:  DAC_XSMT
 ```
 
-Power-up order: `3V3_SW_EN` HIGH → settle → start I2S clocks (silence) → `DAC_XSMT` HIGH → `AMP_SHDN` HIGH (driven).  
-Power-down order: `AMP_SHDN` high-Z (pulldown → LOW) → `DAC_XSMT` LOW → stop I2S → `3V3_SW_EN` LOW.
+Power-up order: `3V3_SW_EN` LOW → settle → start I2S clocks (silence) → `DAC_XSMT` HIGH → `AMP_SHDN` HIGH (driven).  
+Power-down order: `AMP_SHDN` high-Z (pulldown → LOW) → `DAC_XSMT` LOW → stop I2S → `3V3_SW_EN` HIGH.
 
 ```text
 GPIO38 ──5.1k──┬── SD/FAULT (TPA3138D2 pin 2)
@@ -102,4 +102,4 @@ A Hall wake reports `HALL` for either edge; firmware reads MAG_OUT at boot to te
 - **Door left open:** if the session timed out with the door still open, the device sleeps with the door-close wake armed. Button and RTC wakes do not restart the AP; the door must be closed and opened again.
 - **Bench mode:** building with `ACORN_STAY_AWAKE=1` keeps a permanent session (never times out, never sleeps).
 
-All GPIO outputs that must stay in a defined state during sleep (LEDs OFF, `DAC_XSMT` LOW, `3V3_SW_EN` LOW, `SD_CS` HIGH) are latched with GPIO hold before `esp_deep_sleep_start()` and released on the next boot. `AMP_SHDN` is left high-Z instead: the 100k pulldown on SD/FAULT keeps the amplifier shut down.
+All GPIO outputs that must stay in a defined state during sleep (LEDs OFF, `DAC_XSMT` LOW, `3V3_SW_EN` HIGH, `SD_CS` HIGH) are latched with GPIO hold before `esp_deep_sleep_start()` and released on the next boot. `3V3_SW_EN` is held HIGH because its gate pulldown would otherwise turn the rail on. `AMP_SHDN` is left high-Z instead: the 100k pulldown on SD/FAULT keeps the amplifier shut down.

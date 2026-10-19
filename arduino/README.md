@@ -38,12 +38,12 @@ Set **File → Preferences → Sketchbook location** to this `arduino/` folder s
 
 ```bash
 ./arduino/compile-tests.sh                 # host tests, firmware + all test sketches
-./arduino/compile-tests.sh test_rtc        # host tests + one sketch
+./arduino/compile-tests.sh test_hardware   # host tests + one sketch
 ACORN_SKIP_HOST=1 ./arduino/compile-tests.sh acorn   # skip host tests
 
 FQBN=esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PSRAM=enabled
 arduino-cli compile --fqbn $FQBN --libraries arduino/libraries \
-  --upload -p /dev/cu.usbmodem* arduino/tests/test_leds
+  --upload -p /dev/cu.usbmodem* arduino/tests/test_hardware
 arduino-cli monitor -p /dev/cu.usbmodem* -c baudrate=115200
 ```
 
@@ -51,29 +51,21 @@ The default partition scheme's size limit (1.3 MB) does not apply to sketches wi
 
 ## Isolated tests
 
-Each sketch exercises one component, prints `[PASS]` / `[FAIL]` / `[INFO]` lines and ends with `==== RESULT: PASS|FAIL ====`. Run them in this order on a new board:
+Sketches print `[PASS]` / `[FAIL]` / `[INFO]` lines. On a cold boot, `test_hardware` ends its automated checks with `==== RESULT: PASS|FAIL ====`. It has passed on the prototype: LEDs, buttons, Hall, battery, RTC, SHT40, light, SD, and the 5 s RTC wake. Run them in this order on a new board:
 
 | Sketch | Checks | Operator action |
 |---|---|---|
-| `test_leds` | LED_R (GPIO2), LED_G (GPIO48), blink helper | Confirm each LED lights alone |
-| `test_buttons` | BTN_01/BTN_02 debounce, press/release/hold | Press and release both buttons |
-| `test_hall` | MAG_OUT (HIGH = door open) edges | Open and close the door |
-| `test_battery` | VBAT divider, invalid detection | Compare to a multimeter; `cal <volts>` |
+| `test_hardware` | LEDs, buttons, Hall edges, VBAT, RTC (UTC, tick, MFP alarm), SHT40, VEML6031 lux, SD mount/round-trip/WAV headers, 5 s RTC deep-sleep wake (Hall line unarmed) | Watch each LED; open/close the door; `cal <volts>`; `set YYYY-MM-DDTHH:MM:SSZ`; cover the light sensor; insert the card; BTN_01 toggles both LEDs; BTN_02 press then release sleeps 5 s on the RTC alarm only |
 | `test_i2c_scan` | 0x6F RTC, 0x44 SHT40, 0x29 VEML6031 | — |
-| `test_rtc` | UTC conversion (software), oscillator, ticking, alarm → MFP LOW → cleared | First run: `set 2026-09-27T06:00:00Z` (UTC), reset |
-| `test_sht40` | CRC vector, serial, T/RH plausibility | Breathe on sensor |
-| `test_light` | ID 0x0001, auto-ranged lux | Cover / illuminate sensor |
-| `test_sd` | detect, mount, capacity, write/read/delete, WAV header validation | Insert/remove card |
 | `test_audio` | volume curve, power sequence, tones, WAV from SD | Listen for tone and pops; `vol`, `tone <hz>`, `wav` |
 | `test_wifi_ap` | `ACORN-xxxxxx` open AP, client fetch, idle timeout (2 min in test) | Join AP, open `http://192.168.4.1/` |
-| `test_sleep_wake` | EXT0 Hall HIGH (or LOW = door close if left open), EXT1 ANY_LOW buttons + RTC MFP, timer; GPIO hold | Wake it each way, including door left open then closed; measure sleep current |
 | `test_ota` | partition layout, upload + verify + reboot into other slot | Upload a `.bin` at `http://192.168.4.1/` |
 
 Sensors that fail report *invalid* (never zeros), matching the spec's `SENSOR_READ_FAILED` / `BATTERY_READING_INVALID` codes.
 
-### Bring-up assumptions to confirm
+### Bring-up notes
 
-- **LED polarity**: `level::LED_ON = HIGH` in `Pins.h` (GPIO → resistor → LED → GND). Flip it if `test_leds` shows inverted LEDs.
+- **LED polarity** (confirmed by `test_hardware`): `level::LED_ON = HIGH` in `Pins.h` (GPIO → resistor → LED → GND).
 - **AMP_SHDN drive** (confirmed hardware: 5.1k series, 100k pulldown on SD/FAULT): OFF = `INPUT` (the pulldown shuts the amp down, including during boot and sleep), ON = `OUTPUT` HIGH. Amp faults cannot be read back through GPIO38, so `test_audio` relies on listening.
 - **Volume curve**: quadratic 0–100 → gain; SPL calibration is deferred until the prototype arrives.
 

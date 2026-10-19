@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>ACORN Utilities</title>
+<meta name="description" content="Browser-based tools for preparing files for the ACORN field device.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="shared/css/utilities.css">
+<script>
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('acorn-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <a class="brand" href="./" aria-label="ACORN Utilities home">
+      <svg class="brand-icon" aria-hidden="true"><use href="shared/icons.svg#acorn-icon"/></svg>
+      <svg class="brand-word" aria-hidden="true"><use href="shared/icons.svg#acorn-wordmark"/></svg>
+    </a>
+    <a class="site-chip" href="./"><b>Utilities</b><span>Browser tools</span></a>
+    <div class="topbar-right">
+      <button class="icon-btn" id="theme-toggle" type="button" aria-label="Toggle light/dark theme"></button>
+    </div>
+  </header>
+
+  <main class="view" id="view">
+    <section class="hero">
+      <svg class="mark" viewBox="0 0 701 866" aria-hidden="true"><use href="shared/icons.svg#acorn-icon"/></svg>
+      <div class="eyebrow">Autonomous Configurable Outdoor Replay Node</div>
+      <h1>ACORN Utilities</h1>
+      <p>Tools for preparing files before a deployment. They run entirely in your browser: nothing is uploaded, and no account or install is needed.</p>
+    </section>
+
+    <div class="grid">
+      <a class="card tool-card" href="audio-converter/">
+        <span class="tool-icon"><svg class="icon lg" aria-hidden="true"><use href="shared/icons.svg#i-audio"/></svg></span>
+        <h3>Audio converter</h3>
+        <p>Convert WAV, MP3 and other audio to the WAV format ACORN plays (16-bit PCM, mono, 44.1 or 48 kHz). Choose the channel, trim the clip and preview it before you download.</p>
+        <span class="open">Open <svg class="icon sm" aria-hidden="true"><use href="shared/icons.svg#i-arrow"/></svg></span>
+      </a>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <a href="https://github.com/Neurotech-Hub/ACORN">ACORN on GitHub</a> ·
+    <a href="https://github.com/Neurotech-Hub/ACORN#readme">Documentation</a>
+  </footer>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<script type="module">
+  import { initTheme } from './shared/js/ui-helpers.js';
+  initTheme();
+</script>
+</body>
+</html>

@@ -36,7 +36,7 @@ constexpr uint8_t LED_G = 48;
 
 namespace level {
 
-// Not stated in the netlist notes; verify with test_leds on first bring-up.
+// Not stated in the netlist notes; verify with test_hardware on first bring-up.
 constexpr uint8_t LED_ON = HIGH;
 constexpr uint8_t LED_OFF = !LED_ON;
 
@@ -44,7 +44,11 @@ constexpr uint8_t BUTTON_PRESSED = LOW;
 constexpr uint8_t RTC_MFP_ASSERTED = LOW;
 constexpr uint8_t DOOR_OPEN = HIGH;
 constexpr uint8_t SD_INSERTED = LOW;
-constexpr uint8_t SW_3V3_ON = HIGH;
+// AO3401A P-channel high-side switch: source on always-on 3.3 V, drain is
+// 3V3_SW, gate driven through 1k with a 100k pulldown to GND. Gate LOW
+// (Vgs negative) turns the FET on, so the pulldown leaves the rail on until
+// firmware drives the pin HIGH. Sleep holds this pin HIGH to keep the rail off.
+constexpr uint8_t SW_3V3_ON = LOW;
 constexpr uint8_t DAC_UNMUTED = HIGH;
 constexpr uint8_t AMP_ENABLED = HIGH;
 

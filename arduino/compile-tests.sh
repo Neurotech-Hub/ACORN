@@ -4,7 +4,7 @@
 # arduino-cli.
 #
 #   ./arduino/compile-tests.sh              # host tests + compile everything
-#   ./arduino/compile-tests.sh test_rtc     # host tests + matching sketches only
+#   ./arduino/compile-tests.sh test_hardware  # host tests + matching sketches only
 #   ACORN_SKIP_HOST=1 ./arduino/compile-tests.sh   # compile only
 #
 # Requires: arduino-cli with the esp32:esp32 core (3.x), a C++17 host

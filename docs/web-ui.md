@@ -257,3 +257,85 @@ edit web/ ──► npm run dev (mock) ──► iterate
 (against `http://192.168.4.1`) the captive-portal redirect.
 
 Treat `web_assets.h` as a build artifact: regenerate it rather than editing it.
+
+---
+
+## 6. ACORN Utilities (GitHub Pages)
+
+Browser-based tools at <https://neurotech-hub.github.io/ACORN/utilities/>, served by GitHub
+Pages from `docs/`. They are separate from the device UI: nothing in `docs/utilities/` is
+embedded in the firmware, and the pages never talk to a device.
+
+- **Audio converter** (`utilities/audio-converter/`): converts any audio file the browser can
+  decode (WAV, MP3, M4A/AAC, FLAC, OGG, ...) to the WAV format the firmware accepts (16-bit
+  linear PCM, mono, 44.1 or 48 kHz):
+  - Stereo to mono: Combine (average of the channels, the default), Left, or Right. The page
+    warns when Combine loses level (one channel nearly silent) or cancels (channels out of phase).
+  - Trim with draggable handles on the waveform, typed start/end times, or the keyboard.
+  - Preview of the trimmed clip with the selected channel, then download.
+
+Files are processed locally and never uploaded.
+
+```text
+docs/
+  index.html                  redirects the site root to utilities/
+  utilities/
+    index.html                hub landing page (one card per tool)
+    favicon.svg               copy of web/favicon.svg
+    audio-converter/
+      index.html              page shell
+      converter.js            page logic
+    shared/
+      icons.svg               SVG sprite (logo, wordmark, icons from web/index.html)
+      css/utilities.css       tokens and components adapted from web/css/app.css
+      js/ui-helpers.js        DOM builder, theme toggle, toasts, formatting
+      js/wav-encoder.js       canonical 44-byte header + 16-bit PCM samples
+      js/audio-processor.js   decode/resample (Web Audio API), mix, trim, WAV header reading
+      js/waveform.js          canvas waveform with trim handles and playhead
+```
+
+Like `web/`, there are no dependencies or build step.
+
+### 6.1 Converter behavior
+
+- **Resampling:** `decodeAudioData()` on an `OfflineAudioContext` running at the output rate
+  decodes and resamples in one step. The default output rate is 48 kHz for 48 kHz-family
+  sources (8, 16, 32, 48, 96 kHz ...) and 44.1 kHz for everything else, so 44.1 and 48 kHz
+  files are not resampled.
+- **Quantization:** positive samples are scaled by 32767 and negative ones by 32768, which
+  matches Chromium's 16-bit decoder. An ACORN-ready file exported without changes is
+  bit-identical to the source.
+- **File names:** the default is `<source-name>-acorn.wav`. The name is lowercased, and anything
+  outside `[a-z0-9._-]` becomes `-`, as in the firmware's `AudioLibrary::sanitizeName`, so the
+  device keeps the name on upload.
+- **Size:** the page warns above 16 MB (`app::MAX_UPLOAD_BYTES`, about 3 minutes of 44.1 kHz mono),
+  the most the device web upload accepts. Larger files can still be copied to `/audio` on the SD card.
+- **Browser support:** decodable formats depend on the browser. Safari rejects 24-bit and
+  floating-point WAV, and the page then suggests Chrome or Firefox.
+
+If the firmware's WAV rules change (`WavReader::isSupported`), update `ACORN_WAV` in
+`wav-encoder.js` too. Keep `utilities.css` visually in step with `web/css/app.css`.
+
+### 6.2 Local preview
+
+ES modules do not load from `file://`, so serve the folder:
+
+```bash
+python3 -m http.server 8000 --directory docs   # http://127.0.0.1:8000/utilities/
+```
+
+### 6.3 Publishing
+
+One-time setup by a repository admin:
+
+1. On GitHub, open **Settings → Pages**.
+2. Under **Build and deployment**, set **Source** to *Deploy from a branch*, choose the `main`
+   branch and the `/docs` folder, then **Save**.
+3. After the first deployment (a minute or two, shown under **Actions**), the site is at
+   <https://neurotech-hub.github.io/ACORN/utilities/>. The site root redirects there.
+
+After that, every push to `main` that changes `docs/` republishes the site. GitHub Pages also
+renders the Markdown guides in `docs/` (for example `/ACORN/web-ui.html`). That is harmless,
+but Jekyll treats double curly braces and curly-brace-percent pairs as Liquid template tags,
+even inside code blocks, and a malformed tag fails the whole deployment. Keep them out of
+`docs/*.md`, or add an empty `docs/.nojekyll` to publish the files as-is.

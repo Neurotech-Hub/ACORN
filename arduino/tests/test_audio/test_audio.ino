@@ -9,7 +9,7 @@
 
 using namespace acorn;
 
-uint8_t volume = 30;
+uint8_t volume = 10;
 
 String findWav(const char* dirPath) {
   File dir = SdHardware::fs().open(dirPath);
