@@ -202,9 +202,12 @@ void listWavs(const char* dirPath) {
   if (!dir || !dir.isDirectory()) return;
   for (File f = dir.openNextFile(); f; f = dir.openNextFile()) {
     String name = f.name();
+    const int slash = name.lastIndexOf('/');
+    if (slash >= 0) name = name.substring(slash + 1);
+    // macOS AppleDouble sidecars ("._foo.wav") and other dotfiles are not audio.
     String lower = name;
     lower.toLowerCase();
-    if (!f.isDirectory() && lower.endsWith(".wav")) {
+    if (!f.isDirectory() && !name.startsWith(".") && lower.endsWith(".wav")) {
       WavInfo info;
       const WavStatus s = WavReader::open(f, info);
       if (s == WavStatus::Ok) {

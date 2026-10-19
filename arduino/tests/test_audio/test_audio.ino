@@ -1,8 +1,9 @@
 // Isolated test: audio chain 3V3_SW_EN -> PCM5102A (I2S, XSMT) -> TPA3138D2.
-// Plays built-in tones (no SD needed), then the first valid WAV found in /
-// or /audio if a card is present. Listen for pops at power up/down.
+// Plays built-in tones (no SD needed), then the first valid WAV found in
+// /audio or / if a card is present. After that, lists every valid WAV.
+// Listen for pops at power up/down.
 // BTN_01 replays the test tone. Keep volume low on first bring-up.
-// Serial: "vol <0-100>", "tone <hz>", "wav".
+// Serial: "vol <0-100>", "tone <hz>", "wav <id>".
 
 #include <AcornHardware.h>
 #include <AcornTest.h>
@@ -11,23 +12,57 @@ using namespace acorn;
 
 uint8_t volume = 10;
 
-String findWav(const char* dirPath) {
+struct ListedWav {
+  String path;
+  uint32_t sampleRate = 0;
+  uint32_t durationMs = 0;
+};
+
+constexpr uint8_t MAX_WAVS = 32;
+ListedWav wavs[MAX_WAVS];
+uint8_t wavCount = 0;
+
+void collectWavs(const char* dirPath) {
   File dir = SdHardware::fs().open(dirPath);
-  if (!dir || !dir.isDirectory()) return String();
+  if (!dir || !dir.isDirectory()) return;
   for (File f = dir.openNextFile(); f; f = dir.openNextFile()) {
     String name = f.name();
+    const int slash = name.lastIndexOf('/');
+    if (slash >= 0) name = name.substring(slash + 1);
     String lower = name;
     lower.toLowerCase();
-    if (!f.isDirectory() && lower.endsWith(".wav")) {
-      WavInfo info;
-      const bool ok = WavReader::open(f, info) == WavStatus::Ok;
+    if (f.isDirectory() || name.startsWith(".") || !lower.endsWith(".wav")) {
       f.close();
-      if (ok) return String(dirPath) + (strcmp(dirPath, "/") ? "/" : "") + name;
-    } else {
-      f.close();
+      continue;
     }
+    WavInfo info;
+    const bool ok = WavReader::open(f, info) == WavStatus::Ok;
+    f.close();
+    if (!ok) continue;
+    if (wavCount >= MAX_WAVS) {
+      test::info("WAV list full (%u); further files omitted", MAX_WAVS);
+      return;
+    }
+    ListedWav& w = wavs[wavCount++];
+    w.path = String(dirPath) + (strcmp(dirPath, "/") ? "/" : "") + name;
+    w.sampleRate = info.sampleRate;
+    w.durationMs = info.durationMs;
   }
-  return String();
+}
+
+void scanWavs() {
+  wavCount = 0;
+  if (SdHardware::mount() != SdStatus::Ok) return;
+  collectWavs("/audio");
+  collectWavs("/");
+}
+
+void printWavList() {
+  for (uint8_t i = 0; i < wavCount; i++) {
+    test::info("%u  %s  %lu Hz, %lu ms", i + 1, wavs[i].path.c_str(),
+               static_cast<unsigned long>(wavs[i].sampleRate),
+               static_cast<unsigned long>(wavs[i].durationMs));
+  }
 }
 
 bool playWav(const String& path) {
@@ -85,9 +120,8 @@ void setup() {
   toneTest(2000, 500);
 
   if (SdHardware::mount() == SdStatus::Ok) {
-    String path = findWav("/audio");
-    if (!path.length()) path = findWav("/");
-    if (path.length()) test::check("WAV playback", playWav(path), path.c_str());
+    scanWavs();
+    if (wavCount) test::check("WAV playback", playWav(wavs[0].path), wavs[0].path.c_str());
     else test::info("No valid WAV on card (PCM 16-bit mono, 44.1/48 kHz); skipping");
   } else {
     test::info("No SD card; skipping WAV playback");
@@ -96,7 +130,11 @@ void setup() {
   AudioHardware::powerDown();
   test::check("powered down", !AudioHardware::isPoweredUp());
   test::summary();
-  test::info("BTN_01 = tone. Serial: vol <0-100> | tone <hz> | wav");
+  if (wavCount) {
+    test::info("Valid WAV files (bring-up played 1):");
+    printWavList();
+  }
+  test::info("BTN_01 = tone. Serial: vol <0-100> | tone <hz> | wav <id>");
 }
 
 void loop() {
@@ -114,11 +152,16 @@ void loop() {
       AudioHardware::powerDown();
     }
   }
-  if (haveLine && line == "wav" && SdHardware::mount() == SdStatus::Ok) {
-    String path = findWav("/audio");
-    if (!path.length()) path = findWav("/");
-    if (path.length()) playWav(path);
-    AudioHardware::powerDown();
+  if (haveLine && line.startsWith("wav")) {
+    if (!wavCount) scanWavs();
+    const int id = line.substring(3).toInt();
+    if (id < 1 || id > wavCount) {
+      if (!wavCount) test::info("No valid WAV on card");
+      else test::info("Use wav <id>, 1 to %u", wavCount);
+    } else {
+      playWav(wavs[id - 1].path);
+      AudioHardware::powerDown();
+    }
   }
   delay(5);
 }

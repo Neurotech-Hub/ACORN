@@ -53,13 +53,13 @@ The default partition scheme's size limit (1.3 MB) does not apply to sketches wi
 
 Sketches print `[PASS]` / `[FAIL]` / `[INFO]` lines. On a cold boot, `test_hardware` ends its automated checks with `==== RESULT: PASS|FAIL ====`. It has passed on the prototype: LEDs, buttons, Hall, battery, RTC, SHT40, light, SD, and the 5 s RTC wake. Run them in this order on a new board:
 
-| Sketch | Checks | Operator action |
-|---|---|---|
-| `test_hardware` | LEDs, buttons, Hall edges, VBAT, RTC (UTC, tick, MFP alarm), SHT40, VEML6031 lux, SD mount/round-trip/WAV headers, 5 s RTC deep-sleep wake (Hall line unarmed) | Watch each LED; open/close the door; `cal <volts>`; `set YYYY-MM-DDTHH:MM:SSZ`; cover the light sensor; insert the card; BTN_01 toggles both LEDs; BTN_02 press then release sleeps 5 s on the RTC alarm only |
-| `test_i2c_scan` | 0x6F RTC, 0x44 SHT40, 0x29 VEML6031 | — |
-| `test_audio` | volume curve, power sequence, tones, WAV from SD | Listen for tone and pops; `vol`, `tone <hz>`, `wav` |
-| `test_wifi_ap` | `ACORN-xxxxxx` open AP, client fetch, idle timeout (2 min in test) | Join AP, open `http://192.168.4.1/` |
-| `test_ota` | partition layout, upload + verify + reboot into other slot | Upload a `.bin` at `http://192.168.4.1/` |
+| Sketch | Checks | Operator action | Pass |
+|---|---|---|---|
+| `test_hardware` | LEDs, buttons, Hall edges, VBAT, RTC (UTC, tick, MFP alarm), SHT40, VEML6031 lux, SD mount/round-trip/WAV headers, 5 s RTC deep-sleep wake (Hall line unarmed) | Watch each LED; open/close the door; `cal <volts>`; `set YYYY-MM-DDTHH:MM:SSZ`; cover the light sensor; insert the card; BTN_01 toggles both LEDs; BTN_02 press then release sleeps 5 s on the RTC alarm only | 10/19/2026 |
+| `test_i2c_scan` | 0x6F RTC, 0x44 SHT40, 0x29 VEML6031 | — | 10/19/2026 |
+| `test_audio` | volume curve, power sequence, tones, WAV from SD | Listen for tone and pops; `vol`, `tone <hz>`, `wav <id>` | 10/19/2026 |
+| `test_wifi_ap` | `ACORN-xxxxxx` open AP, client fetch, idle timeout (2 min in test) | Join AP, open `http://192.168.4.1/` | 10/19/2026 |
+| `test_ota` | partition layout, upload + verify + reboot into other slot | Upload a `.bin` at `http://192.168.4.1/` | — |
 
 Sensors that fail report *invalid* (never zeros), matching the spec's `SENSOR_READ_FAILED` / `BATTERY_READING_INVALID` codes.
 
