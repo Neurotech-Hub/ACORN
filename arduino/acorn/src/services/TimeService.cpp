@@ -44,7 +44,10 @@ void begin() {
 }
 
 void update() {
-  if (millis() - lastSyncMs < RESYNC_MS) return;
+  // A set that just missed OSCRUN must be rechecked promptly. The 5-minute
+  // cadence would otherwise leave rtc_valid false while the software clock runs.
+  const uint32_t interval = (valid && !rtcOk) ? 1000 : RESYNC_MS;
+  if (millis() - lastSyncMs < interval) return;
   lastSyncMs = millis();
   const int64_t before = nowUtc();
   if (syncFromRtc()) {

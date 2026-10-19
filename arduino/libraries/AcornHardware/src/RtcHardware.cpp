@@ -124,7 +124,16 @@ bool setTime(const UtcDateTime& t) {
   };
   if (!I2cHardware::writeRegs(ADDR, REG_RTCSEC + 1, regs, sizeof(regs))) return false;
   if (!I2cHardware::writeReg(ADDR, REG_RTCSEC, BIT_ST | toBcd(t.second))) return false;
-  return I2cHardware::writeRegs(ADDR, REG_SRAM, MAGIC, sizeof(MAGIC));
+  if (!I2cHardware::writeRegs(ADDR, REG_SRAM, MAGIC, sizeof(MAGIC))) return false;
+  // OSCRUN lags the start bit by the crystal startup time. status() is not
+  // valid until it sets, so wait here instead of reporting a failed set.
+  for (uint8_t i = 0; i < 200; i++) {
+    uint8_t wk;
+    if (!I2cHardware::readReg(ADDR, REG_RTCWKDAY, wk)) return false;
+    if (wk & BIT_OSCRUN) return true;
+    delay(10);
+  }
+  return false;
 }
 
 bool setEpoch(int64_t epoch) { return setTime(UtcTime::fromEpoch(epoch)); }
