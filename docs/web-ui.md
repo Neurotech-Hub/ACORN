@@ -85,17 +85,17 @@ Five sections; bottom tab bar on phones, sidebar at ≥900 px.
 | Section | Contents (`init.md` §44) |
 |---|---|
 | **Status** | Armed / Not-armed hero with blocking faults and fix links, next playback + countdown, active/quiet window, active program, last playback, battery, SD, environment, device time, connection |
-| **Programs** | Program library (activate, duplicate, JSON upload/download, delete) and the program editor: events (RANGE/POINT, fixed/random), 24 h timeline, device-side validation, schedule preview, Save & Apply |
+| **Programs** | Program library (activate/deactivate, duplicate, JSON upload/download, delete) and the program editor: events (RANGE/POINT, fixed/random), 24 h timeline, device-side validation, schedule preview, Save & Apply |
 | **Audio** | First-class field test player (source, volume, Play/Stop, built-in tone), WAV library with metadata, upload, guarded delete |
 | **Data** | Environmental readings, logging enable + interval (presets and custom minutes), playback/environment CSV download and recent-rows preview |
-| **Device** | Identity (ID, name), time (sync from browser, UTC offset), battery voltage→percent model, firmware OTA, diagnostics |
+| **Device** | Identity (ID, name), time (sync from browser, UTC offset), battery discharge plot (read-only voltage→percent model with the current reading marked), firmware OTA, diagnostics |
 
 Principles carried from the spec:
 
 - **UI is an API client.** No schedule is computed in the browser; preview, next playback,
   active/quiet window and validation all come from the device. The editor timeline only draws
   the event definitions.
-- **Staged edits, one apply.** Program, environment, name, offset and battery model edits
+- **Staged edits, one apply.** Program, environment, name and offset edits
   are held in the browser until *Save & Apply*; leaving with unsaved edits asks first.
 - **Viewing is non-destructive.** Nothing mutates on page load.
 - **Device clock, not browser clock**, drives countdowns (`store.deviceNow()`).
@@ -119,7 +119,7 @@ The UI maps these paths onto form fields.
 |---|---|
 | `GET /status` | Aggregate dashboard model (see fields below). Polled every 5 s (1 s while playing). |
 | `POST /session/extend` | *Added.* Resets the AP inactivity timer ("Stay connected"). |
-| `GET/PUT /device` | `{ id, name, firmware_version, battery_model: { name, points: [[volts, pct], …] } }` |
+| `GET/PUT /device` | `{ id, name, firmware_version, battery_model: { name, points: [[volts, pct], …] } }`. PUT accepts `name` only; the battery model is fixed in firmware (12.0 V = 100%) and a `battery_model` field is rejected with 422 `BATTERY_MODEL_INVALID`. |
 | `GET/PUT /time` | PUT `{ utc?: "…Z", utc_offset_minutes?: int }`; returns `{ utc, local, utc_offset_minutes, rtc_valid }` |
 | `GET /audio` | `{ files: [{ name, path, size_bytes, duration_ms, sample_rate, bits_per_sample, channels, valid, error?, referenced_by[], in_active_program }], rules }` |
 | `POST /audio` | multipart field `file`; validates WAV header |
@@ -136,6 +136,7 @@ The UI maps these paths onto form fields.
 | `GET /programs/{id}/preview?count=N` | stored program |
 | `POST /programs/{id}/preview?count=N` | *Added.* Preview an unsaved draft (editor needs this before saving) |
 | `POST /programs/{id}/activate` | full validation before switching |
+| `POST /programs/{id}/deactivate` | clears the active program if it is `{id}` (device not armed); returns status |
 | `GET/PUT /environment` | `{ enabled, interval_minutes, min_interval_minutes, readings, next_sample_utc }` |
 | `GET /logs` | `{ playback: { path, size_bytes, rows, modified_utc }, environment: {…} }` |
 | `GET /logs/{playback|environment}` | CSV download; `?tail=N` returns header + last N rows inline |

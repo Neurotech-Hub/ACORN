@@ -7,18 +7,52 @@ namespace LedService {
 
 namespace {
 bool broadcasting = false;
+bool hasClient = false;
+bool waitPhaseOn = false;
+uint32_t waitChangedAt = 0;
+
+void startWaitBlink() {
+  hasClient = false;
+  waitPhaseOn = true;
+  waitChangedAt = millis();
+  LedHardware::set(Led::Green, true);
+}
 }  // namespace
 
 void begin() {
   LedHardware::begin();
   broadcasting = false;
+  hasClient = false;
 }
 
-void update() { LedHardware::update(); }
+void update() {
+  LedHardware::update();
+  if (!broadcasting || hasClient) return;
+  const uint16_t interval = waitPhaseOn ? WAIT_ON_MS : WAIT_OFF_MS;
+  if (millis() - waitChangedAt < interval) return;
+  waitPhaseOn = !waitPhaseOn;
+  waitChangedAt = millis();
+  LedHardware::set(Led::Green, waitPhaseOn);
+}
 
 void setBroadcasting(bool on) {
   broadcasting = on;
-  LedHardware::set(Led::Green, on);
+  if (!on) {
+    hasClient = false;
+    LedHardware::set(Led::Green, false);
+    return;
+  }
+  startWaitBlink();
+}
+
+void setBroadcastConnected(bool connected) {
+  if (!broadcasting || hasClient == connected) return;
+  if (connected) {
+    hasClient = true;
+    LedHardware::set(Led::Green, true);
+  } else {
+    startWaitBlink();
+  }
 }
 
 bool isBroadcasting() { return broadcasting; }
@@ -34,11 +68,13 @@ bool isFlashing() { return LedHardware::isBlinking(); }
 
 void allOff() {
   broadcasting = false;
+  hasClient = false;
   LedHardware::allOff();
 }
 
 void prepareForSleep() {
   broadcasting = false;
+  hasClient = false;
   LedHardware::prepareForSleep();
 }
 

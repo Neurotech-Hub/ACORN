@@ -13,33 +13,6 @@ constexpr const char* NS = "acorn";
 DeviceSettings settings;
 Preferences prefs;
 
-String modelToJson(const BatteryModel& m) {
-  JsonDocument doc;
-  doc["name"] = m.name.c_str();
-  JsonArray pts = doc["points"].to<JsonArray>();
-  for (const BatteryPoint& p : m.points) {
-    JsonArray pt = pts.add<JsonArray>();
-    pt.add(p.volts);
-    pt.add(p.percent);
-  }
-  String out;
-  serializeJson(doc, out);
-  return out;
-}
-
-bool modelFromJson(const String& text, BatteryModel& out) {
-  JsonDocument doc;
-  if (deserializeJson(doc, text)) return false;
-  BatteryModel m;
-  m.name = doc["name"] | "Custom";
-  for (JsonArrayConst pt : doc["points"].as<JsonArrayConst>()) {
-    m.points.push_back({pt[0].as<double>(), pt[1].as<int32_t>()});
-  }
-  if (!m.isValid()) return false;
-  out = m;
-  return true;
-}
-
 }  // namespace
 
 void begin() {
@@ -50,8 +23,9 @@ void begin() {
   if (!isValidName(settings.name.c_str())) settings.name = SystemHardware::deviceId();
   settings.utcOffsetMinutes = prefs.getInt("utc_off", 0);
   if (!isValidUtcOffset(settings.utcOffsetMinutes)) settings.utcOffsetMinutes = 0;
+  // The battery model is fixed in firmware; drop any curve saved by older builds.
   settings.batteryModel = BatteryModel::defaultM12();
-  if (prefs.isKey("batt_model")) modelFromJson(prefs.getString("batt_model"), settings.batteryModel);
+  if (prefs.isKey("batt_model")) prefs.remove("batt_model");
   settings.batteryCalibration = prefs.getFloat("batt_cal", 1.0f);
   if (!(settings.batteryCalibration > 0.5f && settings.batteryCalibration < 1.5f)) settings.batteryCalibration = 1.0f;
   settings.envEnabled = prefs.getBool("env_on", true);
@@ -88,12 +62,6 @@ bool setUtcOffset(int32_t minutes) {
   if (!isValidUtcOffset(minutes)) return false;
   settings.utcOffsetMinutes = minutes;
   return prefs.putInt("utc_off", minutes) > 0;
-}
-
-bool setBatteryModel(const BatteryModel& model) {
-  if (!model.isValid()) return false;
-  settings.batteryModel = model;
-  return prefs.putString("batt_model", modelToJson(model)) > 0;
 }
 
 bool setBatteryCalibration(float scale) {

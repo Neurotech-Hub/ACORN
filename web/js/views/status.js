@@ -50,21 +50,28 @@ function warnings(st) {
 function nextCard(st) {
   const n = st.next_playback;
   const pb = st.playback;
+  const playing = pb && pb.state === 'playing';
   const today = st.time.local;
   let body;
-  if (pb && pb.state === 'playing') {
-    body = [
-      h('div', { class: 'eyebrow' }, 'Playing now'),
-      h('div', { class: 'bigtime' }, (pb.audio || 'Test tone').replace('/audio/', '')),
-      h('div', { class: 'countdown muted' }, `${pb.source} · volume ${pb.volume}`),
-    ];
-  } else if (n) {
+  if (n) {
     body = [
       h('div', { class: 'eyebrow' }, 'Next playback'),
       h('div', { class: 'bigtime' }, fmtClock(n.scheduled_local), h('small', null, dayLabel(n.scheduled_local, today))),
-      h('div', { class: 'countdown', 'data-until': n.scheduled_utc }, ''),
+      playing
+        ? h('div', { class: 'countdown' }, 'PLAYING')
+        : h('div', { class: 'countdown', 'data-until': n.scheduled_utc }, ''),
       h('div', { class: 'muted small', style: { marginTop: '6px' } },
         h('span', { class: 'mono' }, n.event_id), ' · ', n.audio.replace('/audio/', ''), ` · vol ${n.volume} · `, fmtUtcClock(n.scheduled_utc)),
+    ];
+  } else if (playing) {
+    // Manual / test tone with nothing scheduled: same card layout, no giant filename.
+    const localStart = toLocalIso(Date.parse(pb.started_utc), st.time.utc_offset_minutes);
+    body = [
+      h('div', { class: 'eyebrow' }, 'Next playback'),
+      h('div', { class: 'bigtime' }, fmtClock(localStart), h('small', null, dayLabel(localStart, today))),
+      h('div', { class: 'countdown' }, 'PLAYING'),
+      h('div', { class: 'muted small', style: { marginTop: '6px' } },
+        (pb.audio || 'Test tone').replace('/audio/', ''), ` · ${pb.source} · vol ${pb.volume}`),
     ];
   } else {
     const reason = !st.armed ? 'Blocked by faults above.' : !st.program ? 'No active program.' : 'Program has no upcoming events.';

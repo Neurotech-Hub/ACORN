@@ -32,6 +32,9 @@ uint32_t generation();
 // Section 49 steps 1-12. On failure the previous Program stays active and
 // the returned list explains why (PROGRAM_NOT_FOUND if absent).
 ValidationErrors activate(const String& id);
+// Clears the active Program ID. Scheduled playback stops (not armed) until
+// another Program is activated.
+bool deactivate();
 
 }  // namespace ActiveProgram
 }  // namespace acorn

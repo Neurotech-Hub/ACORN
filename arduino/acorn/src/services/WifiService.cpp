@@ -37,6 +37,7 @@ void stop() {
 
 void update() {
   if (dnsRunning) dns.processNextRequest();
+  if (isRunning()) LedService::setBroadcastConnected(clients() > 0);
 }
 
 bool isRunning() { return WifiApHardware::isRunning(); }

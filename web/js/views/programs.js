@@ -1,4 +1,4 @@
-// Program library: list, activate, duplicate, upload/download, delete.
+// Program library: list, activate/deactivate, duplicate, upload/download, delete.
 
 import { api } from '../api.js';
 import { refresh } from '../store.js';
@@ -81,6 +81,26 @@ export function mount(el) {
     });
   }
 
+  async function deactivate(p, btn) {
+    const ok = await confirmDialog({
+      title: `Deactivate “${p.name}”?`,
+      body: [
+        h('p', null, 'The device will have no active program and will not be armed. No scheduled playback runs until a program is activated again.'),
+        h('p', { class: 'muted' }, 'The program stays on the SD card. Environmental logging and manual playback still work.'),
+      ],
+      confirm: 'Deactivate',
+    });
+    if (!ok) return;
+    await busy(btn, async () => {
+      try {
+        await api.deactivateProgram(p.id);
+        toast(`“${p.name}” deactivated. Device is not armed.`, 'ok');
+        refresh();
+        load();
+      } catch (e) { toastError(e); }
+    });
+  }
+
   async function remove(p) {
     const ok = await confirmDialog({
       title: `Delete “${p.name}”?`,
@@ -96,8 +116,10 @@ export function mount(el) {
   }
 
   function card(p) {
-    const actBtn = button('Activate', { kind: 'primary', size: 'sm', iconName: 'check', disabled: !p.valid });
+    const actBtn = button('Activate', { size: 'sm', iconName: 'check', disabled: !p.valid });
     actBtn.onclick = () => activate(p, actBtn);
+    const deactBtn = button('Deactivate', { size: 'sm', iconName: 'x' });
+    deactBtn.onclick = () => deactivate(p, deactBtn);
     const dupBtn = button('Duplicate', { size: 'sm', iconName: 'copy' });
     dupBtn.onclick = () => duplicate(p.id, dupBtn);
     const dlBtn = button('JSON', { size: 'sm', iconName: 'download', title: 'Download JSON' });
@@ -112,7 +134,7 @@ export function mount(el) {
       h('div', { class: 'muted small mono' }, `${p.id} · ${summarizeEvents(p.event_count)} · rev ${p.revision}`),
       h('div', { class: 'actions' },
         h('a', { class: 'btn sm', href: '#/programs/' + encodeURIComponent(p.id) }, icon('edit', 'sm'), 'Edit'),
-        !p.active && actBtn,
+        p.active ? deactBtn : actBtn,
         dupBtn, dlBtn,
         h('span', { class: 'spacer' }),
         button('', {
@@ -126,7 +148,7 @@ export function mount(el) {
     const atLimit = data.programs.length >= data.limits.MAX_PROGRAMS;
     const active = data.programs.find((p) => p.active);
     replace(el, 
-      pageHead('Programs', 'A program is a complete daily playback schedule. Exactly one is active at a time.',
+      pageHead('Programs', 'A program is a complete daily playback schedule. At most one is active at a time.',
         button('Upload JSON', { iconName: 'upload', onclick: () => fileInput.click(), disabled: atLimit }),
         h('a', { class: 'btn primary', href: '#/programs/new', 'aria-disabled': atLimit ? 'true' : null }, icon('plus'), 'New program')),
       fileInput,

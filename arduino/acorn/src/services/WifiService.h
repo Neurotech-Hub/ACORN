@@ -4,7 +4,7 @@
 
 // Configuration AP policy (init.md section 43). This is the only AP
 // start/stop path, and therefore the only caller of
-// LedService::setBroadcasting(): LED_G is ON exactly while the AP is up.
+// LedService: LED_G blinks until a station joins, then stays solid while the AP is up.
 
 namespace acorn {
 namespace WifiService {

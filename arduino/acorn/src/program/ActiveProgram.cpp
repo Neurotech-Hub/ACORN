@@ -126,5 +126,11 @@ ValidationErrors activate(const String& newId) {
   return {};
 }
 
+bool deactivate() {
+  if (!DeviceConfig::setActiveProgram("")) return false;
+  load();
+  return true;
+}
+
 }  // namespace ActiveProgram
 }  // namespace acorn

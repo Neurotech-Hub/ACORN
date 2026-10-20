@@ -225,29 +225,11 @@ void putDevice() {
   if (!name.isNull() && !(name.is<const char*>() && DeviceConfig::isValidName(name.as<const char*>()))) {
     return fail(422, err::DEVICE_NAME_INVALID, "Name must be 1–32 characters: letters, digits, _ or -.", "name");
   }
-  JsonVariantConst bm = b["battery_model"];
-  BatteryModel model;
-  if (!bm.isNull()) {
-    bool valid = bm["points"].is<JsonArrayConst>();
-    for (JsonVariantConst pt : bm["points"].as<JsonArrayConst>()) {
-      const bool shape = pt.is<JsonArrayConst>() && pt.size() == 2 && (pt[0].is<float>() || pt[0].is<long>()) &&
-                         pt[1].is<long>();
-      if (!shape) {
-        valid = false;
-        break;
-      }
-      model.points.push_back({pt[0].as<double>(), pt[1].as<int32_t>()});
-    }
-    model.name = bm["name"].is<const char*>() && strlen(bm["name"].as<const char*>()) ? bm["name"].as<const char*>()
-                                                                                       : "Custom";
-    if (!valid || !model.isValid()) {
-      return fail(422, err::BATTERY_MODEL_INVALID,
-                  "Battery model needs 2–16 points with voltage strictly decreasing and percent 0–100 non-increasing.",
-                  "battery_model");
-    }
+  if (!b["battery_model"].isNull()) {
+    return fail(422, err::BATTERY_MODEL_INVALID, "The battery model is fixed in this firmware and cannot be edited.",
+                "battery_model");
   }
   if (!name.isNull()) DeviceConfig::setName(name.as<const char*>());
-  if (!bm.isNull()) DeviceConfig::setBatteryModel(model);
   JsonDocument doc;
   deviceJson(okData(doc));
   send(200, doc);
@@ -614,6 +596,14 @@ void programItem(HTTPMethod m, const String& id, const String& action) {
     return getStatus();
   }
 
+  if (action == "deactivate" && m == HTTP_POST) {
+    if (!stored) return programNotFound(id);
+    if (id == DeviceConfig::get().activeProgramId && !ActiveProgram::deactivate()) {
+      return fail(500, err::INTERNAL, "Could not clear the active Program ID.");
+    }
+    return getStatus();
+  }
+
   if (action.length()) return fail(404, err::NOT_FOUND, String("No route for ") + server->uri());
 
   if (m == HTTP_GET) {
@@ -839,7 +829,8 @@ void dispatch(HTTPMethod m, const String& uri) {
     const String id = urlDecode(slash < 0 ? rest : rest.substring(0, slash));
     const String action = slash < 0 ? String() : rest.substring(slash + 1);
     if (id.length() && action.indexOf('/') < 0 &&
-        (action.isEmpty() || action == "validate" || action == "preview" || action == "activate")) {
+        (action.isEmpty() || action == "validate" || action == "preview" || action == "activate" ||
+         action == "deactivate")) {
       return programItem(m, id, action);
     }
   }

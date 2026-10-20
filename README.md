@@ -39,6 +39,16 @@ docs/       specification and guides; docs/utilities/ is the GitHub Pages utilit
 brand/      logo and brand kit
 ```
 
+## Flash Settings
+
+| Setting          | Value                                                         |
+| ---------------- | ------------------------------------------------------------- |
+| Board            | ESP32S3 Dev Module (esp32 board library)                      |
+| Flash Size       | 16MB                                                          |
+| PSRAM            | QSPI PSRAM                                                    |
+| USB CDC On Boot  | Enabled                                                       |
+| Partition Scheme | Default (the sketch's `partitions.csv` is used automatically) |
+
 ### Open items carried from the spec (not decided)
 
 Extra button behaviors (long-press / multi-function) · final audio calibration (volume units vs. SPL,

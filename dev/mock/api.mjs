@@ -94,16 +94,9 @@ export async function handleApi(req, res, url, ctx) {
           return fail(res, 422, 'DEVICE_NAME_INVALID', 'Name must be 1–32 characters: letters, digits, _ or -.', 'name');
         }
         if (b.battery_model !== undefined) {
-          const pts = b.battery_model?.points;
-          const valid = Array.isArray(pts) && pts.length >= 2 && pts.length <= 16 &&
-            pts.every((p, i) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isInteger(p[1]) && p[1] >= 0 && p[1] <= 100 &&
-              (i === 0 || (p[0] < pts[i - 1][0] && p[1] <= pts[i - 1][1])));
-          if (!valid) {
-            return fail(res, 422, 'BATTERY_MODEL_INVALID', 'Battery model needs 2–16 points with voltage strictly decreasing and percent 0–100 non-increasing.', 'battery_model');
-          }
+          return fail(res, 422, 'BATTERY_MODEL_INVALID', 'The battery model is fixed in this firmware and cannot be edited.', 'battery_model');
         }
         if (b.name !== undefined) dev.device.name = b.name;
-        if (b.battery_model !== undefined) dev.batteryModel = { name: b.battery_model.name || 'Custom', points: b.battery_model.points };
         return ok(res, { ...dev.device, firmware_version: dev.firmware.version, battery_model: dev.batteryModel });
       }
     }
@@ -204,7 +197,7 @@ export async function handleApi(req, res, url, ctx) {
         return ok(res, { program: p, summary: dev.programSummary(p) }, 201);
       }
     }
-    if ((match = /^\/programs\/([^/]+)(?:\/(validate|preview|activate))?$/.exec(route))) {
+    if ((match = /^\/programs\/([^/]+)(?:\/(validate|preview|activate|deactivate))?$/.exec(route))) {
       if (!requireSd(dev, res)) return;
       const id = decodeURIComponent(match[1]);
       const action = match[2];
@@ -237,6 +230,11 @@ export async function handleApi(req, res, url, ctx) {
         const errors = dev.validate(stored);
         if (errors.length) return programInvalid(res, errors);
         dev.activeId = id;
+        return ok(res, dev.status());
+      }
+      if (action === 'deactivate' && m === 'POST') {
+        if (!stored) return fail(res, 404, 'PROGRAM_NOT_FOUND', `Program '${id}' not found.`);
+        if (dev.activeId === id) dev.activeId = null;
         return ok(res, dev.status());
       }
       if (!action) {

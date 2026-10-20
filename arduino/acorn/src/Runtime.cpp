@@ -252,11 +252,22 @@ void enterSleep() {
   if (reason != "next event is too close to sleep") ESP.restart();  // peripherals were shut down
 }
 
+// A scheduled event inside the due window that has not run yet. The next-wake
+// planner only looks strictly after "now", so on the event's own second it
+// would already point at the following event.
+bool scheduledEventPending() {
+  if (!TimeService::isValid() || !DeviceState::armed()) return false;
+  const Scheduler* s = ActiveProgram::scheduler();
+  ScheduledEvent due;
+  return s && s->dueEvent(TimeService::nowUtc(), lastExecutedUtc, limits::EVENT_DUE_TOLERANCE_S, due);
+}
+
 // SERVICE mode: sleep once nothing is pending (init.md sections 40, 56).
 void maybeSleep() {
 #if !ACORN_STAY_AWAKE
   if (ConfigSession::active() || static_cast<int32_t>(awakeUntilMs - millis()) > 0) return;
   if (PlaybackService::isPlaying() || LedService::isFlashing()) return;
+  if (scheduledEventPending()) return;
   logFinished();  // a playback that just ended is logged before sleeping
   if (!SleepManager::wakeTooClose(TimeService::nowUtc())) enterSleep();
 #endif

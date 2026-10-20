@@ -94,6 +94,7 @@ export const api = {
       ? request('POST', `/programs/${enc(id || '_draft')}/preview?count=${count}`, draft)
       : request('GET', `/programs/${enc(id)}/preview?count=${count}`),
   activateProgram: (id) => request('POST', `/programs/${enc(id)}/activate`),
+  deactivateProgram: (id) => request('POST', `/programs/${enc(id)}/deactivate`),
 
   environment: () => request('GET', '/environment'),
   updateEnvironment: (patch) => request('PUT', '/environment', patch),

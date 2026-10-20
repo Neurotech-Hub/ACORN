@@ -3,8 +3,8 @@
 import { api } from '../api.js';
 import { store, refresh, deviceNow } from '../store.js';
 import {
-  h, clear, replace, icon, badge, button, busy, field, pageHead, section, skeleton, errorState, toast, toastError,
-  confirmDialog, confirmDiscard, notice, fmtBytes, fmtOffset, fmtDuration, toLocalIso, clone,
+  h, svg, clear, replace, icon, badge, button, busy, field, pageHead, section, skeleton, errorState, toast, toastError,
+  confirmDialog, confirmDiscard, notice, fmtBytes, fmtOffset, fmtDuration, toLocalIso, clone, batteryKind,
 } from '../ui.js';
 
 const OFFSETS = Array.from({ length: (840 + 720) / 15 + 1 }, (_, i) => -720 + i * 15);
@@ -12,10 +12,10 @@ const OFFSETS = Array.from({ length: (840 + 720) / 15 + 1 }, (_, i) => -720 + i 
 export function mount(el) {
   let dev = null;
   let fw = null;
-  const staged = { name: null, offset: null, model: null };
-  const saved = { name: null, offset: null, model: null };
+  const staged = { name: null, offset: null };
+  const saved = { name: null, offset: null };
   const dirtyOf = (k) => JSON.stringify(staged[k]) !== JSON.stringify(saved[k]);
-  const anyDirty = () => ['name', 'offset', 'model'].some(dirtyOf);
+  const anyDirty = () => ['name', 'offset'].some(dirtyOf);
 
   const identityHost = h('div');
   const timeHost = h('div');
@@ -156,24 +156,47 @@ export function mount(el) {
   }
 
   // ---- battery --------------------------------------------------------------------------
+  /** Discharge curve: voltage (y) against charge remaining, 100% at left to 0% at right. */
+  function batteryPlot(points, b) {
+    const W = 320, H = 180, L = 38, R = 12, T = 14, B = 28;
+    const volts = points.map((p) => p[0]).concat(b && b.valid ? [b.voltage] : []);
+    const vMin = Math.floor(Math.min(...volts) * 2) / 2;
+    const vMax = Math.ceil(Math.max(...volts) * 2) / 2;
+    const x = (pct) => L + ((100 - pct) / 100) * (W - L - R);
+    const y = (v) => T + ((vMax - v) / (vMax - vMin || 1)) * (H - T - B);
+
+    const grid = [];
+    for (let v = vMin; v <= vMax + 1e-9; v += 0.5) {
+      grid.push(svg('line', { class: 'grid', x1: L, x2: W - R, y1: y(v), y2: y(v) }),
+        svg('text', { class: 'tick', x: L - 6, y: y(v) + 3.5, 'text-anchor': 'end' }, document.createTextNode(v.toFixed(1))));
+    }
+    for (const pct of [100, 75, 50, 25, 0]) {
+      grid.push(svg('text', { class: 'tick', x: x(pct), y: H - B + 14, 'text-anchor': pct === 100 ? 'start' : pct === 0 ? 'end' : 'middle' },
+        document.createTextNode(`${pct}%`)));
+    }
+
+    const curve = svg('polyline', { class: 'curve', points: points.map(([v, p]) => `${x(p)},${y(v)}`).join(' ') });
+    let now = null;
+    if (b && b.valid) {
+      const cx = x(b.percent), cy = y(b.voltage);
+      const anchor = b.percent > 70 ? 'start' : b.percent < 30 ? 'end' : 'middle';
+      now = svg('g', { class: `now ${batteryKind(b.percent)}` },
+        svg('line', { x1: cx, x2: cx, y1: T, y2: H - B }),
+        svg('circle', { cx, cy, r: 4.5 }),
+        svg('text', { x: cx + (anchor === 'start' ? 6 : anchor === 'end' ? -6 : 0), y: T - 3, 'text-anchor': anchor },
+          document.createTextNode(`Now · ${b.voltage.toFixed(2)} V · ${b.percent}%`)));
+    }
+
+    return svg('svg', { class: 'batt-plot', viewBox: `0 0 ${W} ${H}`, role: 'img',
+      'aria-label': b && b.valid ? `Battery at ${b.voltage.toFixed(2)} volts, about ${b.percent} percent` : 'Battery voltage model' },
+    grid, svg('line', { class: 'axis', x1: L, x2: W - R, y1: H - B, y2: H - B }), curve, now);
+  }
+
   function renderBattery() {
     const st = store.status;
     const b = st && st.battery;
-    const pts = staged.model.points;
-    const rows = pts.map((p, i) => {
-      const v = h('input', { class: 'input num', type: 'number', step: 0.01, min: 0, value: p[0], 'aria-label': `Voltage ${i + 1}` });
-      const pc = h('input', { class: 'input num', type: 'number', step: 1, min: 0, max: 100, value: p[1], 'aria-label': `Percent ${i + 1}` });
-      v.oninput = () => { p[0] = parseFloat(v.value); refreshModelActions(); };
-      pc.oninput = () => { p[1] = parseInt(pc.value, 10); refreshModelActions(); };
-      return h('tr', null,
-        h('td', null, v), h('td', null, pc),
-        h('td', null, button('', {
-          size: 'sm', kind: 'ghost', iconName: 'x', title: 'Remove point', disabled: pts.length <= 2,
-          onclick: () => { pts.splice(i, 1); renderBattery(); },
-        })));
-    });
-    let modelActions = saveRow('model', saveModel);
-    function refreshModelActions() { const n = saveRow('model', saveModel); modelActions.replaceWith(n); modelActions = n; }
+    const model = dev.battery_model;
+    const top = model.points[0], bottom = model.points[model.points.length - 1];
 
     replace(batteryHost, h('div', { class: 'grid two' },
       h('div', { class: 'card tile' },
@@ -181,30 +204,11 @@ export function mount(el) {
         b && b.valid ? h('div', { class: 'value' }, b.voltage.toFixed(2), h('small', null, 'V')) : h('div', { class: 'value muted' }, '—'),
         b && b.valid && h('div', { class: 'muted' }, `≈ ${b.percent}% estimated`),
         h('p', { class: 'foot' }, 'Voltage is the authoritative measurement; percent is an estimate from the model. BTN_02 flashes LED_R once per 10%.')),
-      h('div', { class: 'card form' },
-        h('div', { class: 'card-head', style: { margin: 0 } }, h('h3', null, 'Voltage → percent model'), h('span', { class: 'muted small' }, staged.model.name)),
-        h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
-          h('thead', null, h('tr', null, h('th', null, 'Volts'), h('th', null, 'Percent'), h('th'))),
-          h('tbody', null, rows))),
-        h('div', { class: 'row' },
-          button('Add point', {
-            size: 'sm', iconName: 'plus', disabled: pts.length >= 16,
-            onclick: () => { const last = pts[pts.length - 1]; pts.push([+(last[0] - 0.2).toFixed(2), Math.max(0, last[1] - 10)]); renderBattery(); },
-          }),
-          h('span', { class: 'small muted' }, 'Highest voltage first; 2–16 points.')),
-        modelActions)));
-  }
-
-  async function saveModel() {
-    try {
-      const name = dirtyOf('model') && staged.model.name.includes('(default)') ? 'Custom' : staged.model.name;
-      dev = await api.updateDevice({ battery_model: { name, points: staged.model.points } });
-      saved.model = clone(dev.battery_model);
-      staged.model = clone(dev.battery_model);
-      toast('Battery model saved.', 'ok');
-      refresh();
-      renderBattery();
-    } catch (e) { toastError(e); }
+      h('div', { class: 'card' },
+        h('div', { class: 'card-head', style: { marginBottom: '8px' } }, h('h3', null, 'Discharge model'), h('span', { class: 'muted small' }, model.name)),
+        batteryPlot(model.points, b),
+        h('p', { class: 'muted small', style: { marginTop: '6px' } },
+          `${top[0].toFixed(1)} V = ${top[1]}% down to ${bottom[0].toFixed(1)} V = ${bottom[1]}%. Fixed in firmware.`))));
   }
 
   // ---- firmware -------------------------------------------------------------------------
@@ -322,8 +326,6 @@ export function mount(el) {
       const st = store.status || (await refresh());
       saved.name = staged.name = dev.name;
       saved.offset = staged.offset = st.time.utc_offset_minutes;
-      saved.model = clone(dev.battery_model);
-      staged.model = clone(dev.battery_model);
       replace(el, 
         pageHead('Device', 'Identity, clock, power and firmware.'),
         section('Identity'), identityHost,
@@ -346,7 +348,7 @@ export function mount(el) {
       renderDiag();
       if (dev && lastRtc !== null && lastRtc !== st.time.rtc_valid) renderTime();
       lastRtc = st.time.rtc_valid;
-      if (dev && !dirtyOf('model') && !batteryHost.contains(document.activeElement)) renderBattery();
+      if (dev) renderBattery();
     },
     isDirty: anyDirty,
     canLeave: async () => !anyDirty() || confirmDiscard(),
