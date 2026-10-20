@@ -96,8 +96,19 @@ const outputCard = h('section', { class: 'card disabled', 'aria-labelledby': 'ou
     summary,
     h('div', { class: 'export-bar' }, exportBtn)));
 
+const DEMO_URL = new URL('./aa0000324_goshawk.mp3', import.meta.url);
+const DEMO_NAME = 'aa0000324_goshawk.mp3';
+
+const tryDemoBtn = button('Try demo', {
+  size: 'sm', kind: 'ghost',
+  title: 'Load a sample northern goshawk call',
+  onclick: () => loadDemo(),
+});
+
 const sourceCard = h('section', { class: 'card', 'aria-labelledby': 'source-title' },
-  h('div', { class: 'card-head' }, h('span', { class: 'step' }, '01'), h('h3', { id: 'source-title' }, 'Source file')),
+  h('div', { class: 'card-head' },
+    h('span', { class: 'step' }, '01'), h('h3', { id: 'source-title' }, 'Source file'),
+    h('div', { class: 'actions' }, tryDemoBtn)),
   sourceBody);
 
 replace(view,
@@ -180,6 +191,7 @@ async function loadFile(file) {
   stopPreview();
   Object.assign(state, { file, bytes: null, header: null, loading: true, error: null, channels: [], mono: null, mode: 'combine', trimStart: 0, trimEnd: 0 });
   setEnabled(false);
+  tryDemoBtn.disabled = true;
   renderSource();
   try {
     state.bytes = await file.arrayBuffer();
@@ -191,6 +203,7 @@ async function loadFile(file) {
     console.error(e);
     state.loading = false;
     state.error = e;
+    tryDemoBtn.disabled = false;
     renderSource();
     return;
   }
@@ -199,8 +212,23 @@ async function loadFile(file) {
   nameInput.value = state.fileName;
   remix();
   setTrim(0, waveform.duration);
+  tryDemoBtn.disabled = false;
   renderSource();
   setEnabled(true);
+}
+
+async function loadDemo() {
+  await busy(tryDemoBtn, async () => {
+    try {
+      const res = await fetch(DEMO_URL);
+      if (!res.ok) throw new Error(`Could not fetch demo (${res.status})`);
+      const blob = await res.blob();
+      await loadFile(new File([blob], DEMO_NAME, { type: blob.type || 'audio/mpeg' }));
+    } catch (e) {
+      console.error(e);
+      toast(e.message || 'Could not load the demo file.', 'fault');
+    }
+  });
 }
 
 async function decodeAt(rate) {
