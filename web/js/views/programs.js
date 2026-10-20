@@ -148,7 +148,7 @@ export function mount(el) {
     const atLimit = data.programs.length >= data.limits.MAX_PROGRAMS;
     const active = data.programs.find((p) => p.active);
     replace(el, 
-      pageHead('Programs', 'A program is a complete daily playback schedule. At most one is active at a time.',
+      pageHead('Programs', null,
         button('Upload JSON', { iconName: 'upload', onclick: () => fileInput.click(), disabled: atLimit }),
         h('a', { class: 'btn primary', href: '#/programs/new', 'aria-disabled': atLimit ? 'true' : null }, icon('plus'), 'New program')),
       fileInput,

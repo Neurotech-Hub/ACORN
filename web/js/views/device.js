@@ -327,7 +327,7 @@ export function mount(el) {
       saved.name = staged.name = dev.name;
       saved.offset = staged.offset = st.time.utc_offset_minutes;
       replace(el, 
-        pageHead('Device', 'Identity, clock, power and firmware.'),
+        pageHead('Device'),
         section('Identity'), identityHost,
         section('Time'), timeHost,
         section('Battery'), batteryHost,

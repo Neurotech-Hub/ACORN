@@ -199,7 +199,7 @@ export function mount(el) {
   }
 
   replace(el, 
-    pageHead('Audio', 'Test playback on the device speaker, and manage WAV files on the SD card.'),
+    pageHead('Audio'),
     h('div', { class: 'card player' },
       rings,
       h('div', { class: 'player-controls' },

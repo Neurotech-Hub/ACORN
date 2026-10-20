@@ -175,7 +175,7 @@ export function mount(el) {
   }
 
   replace(el, 
-    pageHead('Data', 'Environmental sensing and experiment logs stored on the SD card.'),
+    pageHead('Data'),
     section('Environment'),
     envHost,
     section('Logs', button('', { size: 'sm', kind: 'ghost', iconName: 'refresh', title: 'Refresh logs', onclick: () => { Object.keys(tails).forEach((k) => (tails[k] = null)); loadLogs(); } })),
