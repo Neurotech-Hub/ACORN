@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "../AppConfig.h"
+#include "../config/SiteStore.h"
 #include "../state/DeviceState.h"
 #include "CsvFile.h"
 
@@ -59,7 +60,9 @@ void remember(const std::vector<String>& c) {
 bool ensure() { return CsvFile::ensure(app::PLAYBACK_LOG, Csv::PLAYBACK_HEADER); }
 
 bool append(const Csv::PlaybackRow& row) {
-  const std::string line = Csv::playbackRow(row);
+  Csv::PlaybackRow stamped = row;
+  stamped.location = SiteStore::location();
+  const std::string line = Csv::playbackRow(stamped);
   const bool ok = CsvFile::append(app::PLAYBACK_LOG, Csv::PLAYBACK_HEADER, String(line.c_str()));
   DeviceState::reportLogWrite(ok);
   if (ok) remember(split(String(line.c_str())));

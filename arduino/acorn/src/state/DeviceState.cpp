@@ -3,6 +3,7 @@
 #include "../AppConfig.h"
 #include "../audio/PlaybackService.h"
 #include "../config/DeviceConfig.h"
+#include "../config/SiteStore.h"
 #include "../logging/EnvironmentLogger.h"
 #include "../logging/PlaybackLogger.h"
 #include "../program/ActiveProgram.h"
@@ -36,6 +37,7 @@ bool everAttempted = false;
 void onMounted() {
   AudioLibrary::invalidate();
   ProgramStore::invalidate();
+  SiteStore::invalidate();
   ActiveProgram::reload();
   refreshSd();
   reportLogWrite(PlaybackLogger::ensure() && EnvironmentLogger::ensure());
@@ -45,6 +47,7 @@ void onMounted() {
 void onUnmounted() {
   AudioLibrary::invalidate();
   ProgramStore::invalidate();
+  SiteStore::invalidate();
   ActiveProgram::reload();
   info = SdInfo{};
   full = false;
@@ -238,6 +241,10 @@ void statusJson(JsonObject out) {
     sd["used_bytes"] = info.usedBytes;
     sd["free_bytes"] = info.totalBytes > info.usedBytes ? info.totalBytes - info.usedBytes : 0;
   }
+
+  const Site& site = SiteStore::get();
+  if (site.valid) SiteJson::toJson(site, out["site"].to<JsonObject>());
+  else out["site"] = nullptr;
 
   const EnvState& e = EnvironmentService::fresh();
   JsonObject env = out["environment"].to<JsonObject>();

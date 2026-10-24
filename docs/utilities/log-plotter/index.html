@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Log Plotter · ACORN Utilities</title>
+<meta name="description" content="Summarize and plot ACORN playback and environment logs, copy a text summary, or print to PDF. Runs entirely in your browser.">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../shared/css/utilities.css">
+<script>
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('acorn-theme'); } catch (e) {}
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <a class="brand" href="../" aria-label="ACORN Utilities home">
+      <svg class="brand-icon" aria-hidden="true"><use href="../shared/icons.svg#acorn-icon"/></svg>
+      <svg class="brand-word" aria-hidden="true"><use href="../shared/icons.svg#acorn-wordmark"/></svg>
+    </a>
+    <a class="site-chip" href="../"><b>Utilities</b><span>Log Plotter</span></a>
+    <div class="topbar-right">
+      <button class="icon-btn" id="theme-toggle" type="button" aria-label="Toggle light/dark theme"></button>
+    </div>
+  </header>
+
+  <main class="view" id="view">
+    <noscript><div class="notice fault"><div><b>JavaScript is required.</b><span>The Log Plotter runs in your browser and needs JavaScript enabled.</span></div></div></noscript>
+  </main>
+
+  <footer class="footer">
+    Files are processed on this device and never uploaded. ·
+    <a href="https://github.com/Neurotech-Hub/ACORN">ACORN on GitHub</a>
+  </footer>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<script type="module" src="plotter.js"></script>
+</body>
+</html>

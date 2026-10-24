@@ -1,7 +1,7 @@
 // Mock /api/v1 routes. Response shapes here are the working contract for firmware (docs/web-ui.md).
 
 import { parseMultipart, inspectWav, inspectFirmware } from './binary.mjs';
-import { LIMITS, programRevision, preview } from './state.mjs';
+import { LIMITS, programRevision, preview, parseSite } from './state.mjs';
 import { isoUtc, parseHms } from './scheduler.mjs';
 
 const MAX_UPLOAD = 16 * 1024 * 1024;
@@ -277,6 +277,19 @@ export async function handleApi(req, res, url, ctx) {
         Object.assign(dev.env, b.enabled !== undefined ? { enabled: b.enabled } : {}, b.interval_minutes !== undefined ? { interval_minutes: b.interval_minutes } : {});
         return ok(res, { ...dev.env, min_interval_minutes: 1, readings: dev.readings(), next_sample_utc: dev.nextEnvSample() });
       }
+    }
+
+    // ---- site location (/config/site.json) ------------------------------------------------
+    if (route === '/site' && ['GET', 'PUT', 'DELETE'].includes(m)) {
+      if (!requireSd(dev, res)) return;
+      if (m === 'PUT') {
+        const r = parseSite(await readJson(req));
+        if (!r.site) return fail(res, 422, 'SITE_INVALID', r.message, r.field);
+        dev.site = { ...r.site, source: r.site.source ?? 'manual', fixed_utc: dev.rtcValid ? isoUtc(dev.nowMs()) : r.site.fixed_utc };
+      } else if (m === 'DELETE') {
+        dev.site = null;
+      }
+      return ok(res, dev.siteJson());
     }
 
     // ---- logs ---------------------------------------------------------------------------

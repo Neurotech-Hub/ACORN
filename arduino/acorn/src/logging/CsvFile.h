@@ -17,7 +17,9 @@ struct Info {
   String lastTimestamp;   // first field of the last row, "" if none
 };
 
-bool ensure(const char* path, const char* header);  // mkdir + header
+// mkdir + header. A file whose first line differs from `header` (an older
+// column layout) is renamed to <path>.bak and a fresh file is started.
+bool ensure(const char* path, const char* header);
 bool append(const char* path, const char* header, const String& row);
 Info info(const char* path);
 // Header plus the last `rows` data rows (all rows if rows == 0).

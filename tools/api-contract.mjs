@@ -119,6 +119,9 @@ async function main() {
     hasKeys(s.time, ['utc', 'local', 'utc_offset_minutes', 'rtc_valid']) && isIsoZ(s.time.utc) && isIsoLocal(s.time.local));
   check('status.battery {voltage,percent,valid,model}', hasKeys(s.battery, ['voltage', 'percent', 'valid', 'model']));
   check('status.sd {present,mounted}', hasKeys(s.sd, ['present', 'mounted']));
+  check('status.site null or {latitude,longitude,...}', s.site === null ||
+    (hasKeys(s.site, ['latitude', 'longitude', 'accuracy_m', 'source', 'fixed_utc', 'note']) && typeof s.site.latitude === 'number'),
+    JSON.stringify(s.site));
   check('status.environment shape', hasKeys(s.environment,
     ['temperature_c', 'relative_humidity_pct', 'ambient_light_lux', 'ok', 'sampled_utc', 'logging_enabled', 'interval_minutes']));
   check('status.program null or {id,name,revision,valid,loaded,window}',
@@ -322,6 +325,42 @@ async function main() {
     errEnvelope('GET deleted program', await call('GET', '/programs/contract-tmp'), 404, 'PROGRAM_NOT_FOUND');
   }
 
+  section('site');
+  const siteKeys = ['set', 'latitude', 'longitude', 'accuracy_m', 'source', 'fixed_utc', 'note'];
+  const site = await call('GET', '/site');
+  okEnvelope('GET /site', site);
+  const st0 = site.json?.data;
+  check('site shape', hasKeys(st0, siteKeys) && typeof st0.set === 'boolean' &&
+    (st0.set ? typeof st0.latitude === 'number' && typeof st0.longitude === 'number' : st0.latitude === null && st0.longitude === null),
+    JSON.stringify(st0));
+  check('status.site matches /site', st0?.set ? s.site?.latitude === st0.latitude && s.site?.longitude === st0.longitude : s.site === null);
+  errEnvelope('PUT /site latitude 91', await call('PUT', '/site', { json: { latitude: 91, longitude: 0 } }), 422, 'SITE_INVALID', 'latitude');
+  errEnvelope('PUT /site longitude missing', await call('PUT', '/site', { json: { latitude: 45 } }), 422, 'SITE_INVALID', 'longitude');
+  errEnvelope('PUT /site latitude as string', await call('PUT', '/site', { json: { latitude: '45', longitude: 0 } }), 422, 'SITE_INVALID', 'latitude');
+  errEnvelope('PUT /site accuracy -1', await call('PUT', '/site', { json: { latitude: 45, longitude: 0, accuracy_m: -1 } }), 422, 'SITE_INVALID', 'accuracy_m');
+  errEnvelope('PUT /site bad source', await call('PUT', '/site', { json: { latitude: 45, longitude: 0, source: 'satellite' } }), 422, 'SITE_INVALID', 'source');
+  errEnvelope('PUT /site malformed JSON', await call('PUT', '/site', { json: '{"latitude":' }), 400, 'JSON_INVALID');
+  if (READONLY) skip('PUT/DELETE /site round-trip', 'read-only');
+  else if (st0) {
+    const put = await call('PUT', '/site', { json: { latitude: 45.1234567, longitude: -93.7654321, accuracy_m: 12, source: 'manual', note: 'contract test' } });
+    okEnvelope('PUT /site', put);
+    const p = put.json?.data;
+    check('PUT /site stored at 6 decimals', p?.set === true && p.latitude === 45.123457 && p.longitude === -93.765432 &&
+      p.accuracy_m === 12 && p.source === 'manual' && p.note === 'contract test', JSON.stringify(p));
+    check('PUT /site fixed_utc from device clock', !s.time?.rtc_valid || isIsoZ(p?.fixed_utc), p?.fixed_utc);
+    const got = (await call('GET', '/site')).json?.data;
+    check('GET /site after PUT', got?.latitude === 45.123457 && got?.longitude === -93.765432);
+    const envAfter = await call('GET', '/logs/environment?tail=1');
+    check('header still current after site change', envAfter.text.startsWith('timestamp_utc,') && envAfter.text.includes(',latitude,longitude\n'));
+    const del = await call('DELETE', '/site');
+    okEnvelope('DELETE /site', del);
+    check('DELETE /site clears', del.json?.data?.set === false && del.json?.data?.latitude === null);
+    if (st0.set) {
+      const { set, fixed_utc, ...prev } = st0;
+      okEnvelope('PUT /site restore original', await call('PUT', '/site', { json: Object.fromEntries(Object.entries(prev).filter(([, v]) => v !== null)) }));
+    }
+  }
+
   section('logs');
   const logs = await call('GET', '/logs');
   okEnvelope('GET /logs', logs);
@@ -332,8 +371,15 @@ async function main() {
     tail.text.startsWith('actual_utc,scheduled_utc,program_id,program_revision,event_id,source,audio,volume,duration_ms,result,error_code,') &&
     tail.text.trim().split('\n').length <= 4, tail.text.slice(0, 120));
   const envTail = await call('GET', '/logs/environment?tail=2');
+  check('GET /logs/playback header ends with latitude,longitude',
+    tail.text.split('\n')[0] === 'actual_utc,scheduled_utc,program_id,program_revision,event_id,source,audio,volume,duration_ms,result,error_code,' +
+      'battery_voltage,battery_percent,temperature_c,relative_humidity_pct,ambient_light_lux,latitude,longitude', tail.text.split('\n')[0]);
   check('GET /logs/environment?tail=2 header', envTail.status === 200 &&
-    envTail.text.startsWith('timestamp_utc,temperature_c,relative_humidity_pct,ambient_light_lux,battery_voltage,battery_percent\n'));
+    envTail.text.startsWith('timestamp_utc,temperature_c,relative_humidity_pct,ambient_light_lux,battery_voltage,battery_percent,latitude,longitude\n'));
+  const coordCells = (row) => row.split(',').slice(-2);
+  const coordOk = ([la, lo]) => (la === '' && lo === '') || (/^-?\d+\.\d{6}$/.test(la) && /^-?\d+\.\d{6}$/.test(lo));
+  const envRows = envTail.text.trim().split('\n').slice(1);
+  check('environment rows end with 6-decimal or empty lat/lon', envRows.every((r) => coordOk(coordCells(r))), envRows[0]);
 
   section('web ui');
   const index = await fetch(`${BASE}/`);

@@ -71,6 +71,7 @@ Open **http://127.0.0.1:8080/__dev** to switch the mock device into a scenario (
 | `rtc-invalid` | `TIME_NOT_SET`; fix via Device → Sync clock |
 | `low-battery` | ~5% battery warning |
 | `sensor-fail` | Non-blocking `SENSOR_READ_FAILED` |
+| `no-site` | No `/config/site.json`; log rows have empty latitude/longitude (all other scenarios carry a fix) |
 
 The mock also accepts real uploads: WAV headers are parsed (16-bit mono 44.1/48 kHz accepted;
 stereo etc. rejected with `WAV_UNSUPPORTED`), and firmware `.bin` files are checked for the
@@ -88,14 +89,14 @@ Five sections; bottom tab bar on phones, sidebar at ≥900 px.
 | **Programs** | Program library (activate/deactivate, duplicate, JSON upload/download, delete) and the program editor: events (RANGE/POINT, fixed/random), 24 h timeline, device-side validation, schedule preview, Save & Apply |
 | **Audio** | First-class field test player (source, volume, Play/Stop, built-in tone), WAV library with metadata, upload, guarded delete |
 | **Data** | Environmental readings, logging enable + interval (presets and custom minutes), playback/environment CSV download and recent-rows preview |
-| **Device** | Identity (ID, name), time (sync from browser, UTC offset), battery discharge plot (read-only voltage→percent model with the current reading marked), firmware OTA, diagnostics |
+| **Device** | Identity (ID, name), time (sync from browser, UTC offset), site location (phone GPS or manual entry, stored in `/config/site.json`), battery discharge plot (read-only voltage→percent model with the current reading marked), firmware OTA, diagnostics |
 
 Principles carried from the spec:
 
 - **UI is an API client.** No schedule is computed in the browser; preview, next playback,
   active/quiet window and validation all come from the device. The editor timeline only draws
   the event definitions.
-- **Staged edits, one apply.** Program, environment, name and offset edits
+- **Staged edits, one apply.** Program, environment, name, offset and site location edits
   are held in the browser until *Save & Apply*; leaving with unsaved edits asks first.
 - **Viewing is non-destructive.** Nothing mutates on page load.
 - **Device clock, not browser clock**, drives countdowns (`store.deviceNow()`).
@@ -138,15 +139,16 @@ The UI maps these paths onto form fields.
 | `POST /programs/{id}/activate` | full validation before switching |
 | `POST /programs/{id}/deactivate` | clears the active program if it is `{id}` (device not armed); returns status |
 | `GET/PUT /environment` | `{ enabled, interval_minutes, min_interval_minutes, readings, next_sample_utc }` |
+| `GET/PUT/DELETE /site` | *Added.* Site location in `/config/site.json`: `{ set, latitude, longitude, accuracy_m, source, fixed_utc, note }`, all `null` when unset. PUT `{ latitude, longitude, accuracy_m?, source?: "phone_gps"|"manual"|"prestage", note? }` (default source `manual`); the device sets `fixed_utc` from its clock when the clock is valid. Bad values → 422 `SITE_INVALID` with `field`. DELETE removes the file. All three need the SD card (503 otherwise). |
 | `GET /logs` | `{ playback: { path, size_bytes, rows, modified_utc }, environment: {…} }` |
-| `GET /logs/{playback|environment}` | CSV download; `?tail=N` returns header + last N rows inline |
+| `GET /logs/{playback|environment}` | CSV download; `?tail=N` returns header + last N rows inline. Both logs end with `latitude,longitude` (6 decimals, blank when no site is set). |
 | `GET /firmware` | *Added.* `{ version, build_utc, running_partition, next_partition, slot_size_bytes }` |
 | `POST /firmware` | multipart `file`; responds before reboot with `{ rebooting: true }` |
 
 `GET /status` fields: `device{id,name,firmware_version}`, `mode`, `armed`,
 `faults[{code,message,blocking,area,program_id?,field?}]`, `time{utc,local,utc_offset_minutes,rtc_valid}`,
 `reset_reason`, `wake_reason`, `uptime_s`, `battery{voltage,percent,valid,model}`,
-`sd{present,mounted,total_bytes,used_bytes,free_bytes}`,
+`sd{present,mounted,total_bytes,used_bytes,free_bytes}`, `site` (`null` or `{latitude,longitude,accuracy_m,source,fixed_utc,note}`),
 `environment{temperature_c,relative_humidity_pct,ambient_light_lux,ok,sampled_utc,logging_enabled,interval_minutes}`,
 `program{id,name,revision,valid,loaded,window{state:"active"|"quiet"|"points_only",event_id,until_local,until_utc}}`,
 `playback{state,source,audio,volume,duration_ms,position_ms,started_utc}`, `last_playback`,
@@ -156,7 +158,7 @@ The UI maps these paths onto form fields.
 Error codes used in addition to `init.md` §48: `AUDIO_IN_USE`, `AUDIO_NAME_TOO_LONG`,
 `PROGRAM_ID_EXISTS`, `PROGRAM_ACTIVE`, `PROGRAM_LIMIT_EXCEEDED`, `DEVICE_NAME_INVALID`,
 `BATTERY_MODEL_INVALID`, `TIME_INVALID`, `TIME_OFFSET_INVALID`, `ENV_CONFIG_INVALID`,
-`ENV_INTERVAL_INVALID`, `VOLUME_INVALID`, `UPLOAD_INVALID`, `UPLOAD_TOO_LARGE`, `NOT_FOUND`.
+`ENV_INTERVAL_INVALID`, `SITE_INVALID`, `VOLUME_INVALID`, `UPLOAD_INVALID`, `UPLOAD_TOO_LARGE`, `NOT_FOUND`.
 
 Mock limits (to be confirmed by memory testing in Phase 3, `init.md` §55): 16 programs,
 32 events/program, name 48 chars, description 200, audio filename 32, scheduling guard 2 s.
@@ -274,6 +276,18 @@ embedded in the firmware, and the pages never talk to a device.
     warns when Combine loses level (one channel nearly silent) or cancels (channels out of phase).
   - Trim with draggable handles on the waveform, typed start/end times, or the keyboard.
   - Preview of the trimmed clip with the selected channel, then download.
+- **Log Plotter** (`utilities/log-plotter/`): summarizes and plots one `playback.csv` or
+  `environment.csv` from the SD card or the device's Data page. The log type is detected from
+  the header, and logs from older firmware without `latitude,longitude` still load:
+  - Summary tiles. Playback logs show counts by result, source, program, event and audio, plus
+    duration, start delay, errors, battery, temperature and site. Environment logs show sample
+    interval, coverage and gaps, sensor ranges, missing readings, battery and site.
+  - Plots. Playback logs get playbacks per day by result, time of day (scheduled vs manual),
+    battery and temperature at each playback. Environment logs get temperature, humidity,
+    light, battery and a daily temperature profile. Gaps break the lines.
+  - A UTC offset picker for local-time plots (logs are UTC), **Copy summary** (plain text) and
+    **Print / PDF** (a print stylesheet with light colors and no controls).
+  - Demo playback and environment logs, generated in the page, for trying it without a device.
 
 Files are processed locally and never uploaded.
 
@@ -286,6 +300,10 @@ docs/
     audio-converter/
       index.html              page shell
       converter.js            page logic
+    log-plotter/
+      index.html              page shell
+      plotter.js              page logic: summary tiles, plots, copy, print
+      demo.js                 seeded demo playback and environment logs
     shared/
       icons.svg               SVG sprite (logo, wordmark, icons from web/index.html)
       css/utilities.css       tokens and components adapted from web/css/app.css
@@ -293,6 +311,8 @@ docs/
       js/wav-encoder.js       canonical 44-byte header + 16-bit PCM samples
       js/audio-processor.js   decode/resample (Web Audio API), mix, trim, WAV header reading
       js/waveform.js          canvas waveform with trim handles and playhead
+      js/acorn-logs.js        CSV parsing for both log layouts, stats, gaps
+      js/charts.js            SVG time-series and column charts with tooltips
 ```
 
 Like `web/`, there are no dependencies or build step.
@@ -315,7 +335,9 @@ Like `web/`, there are no dependencies or build step.
   floating-point WAV, and the page then suggests Chrome or Firefox.
 
 If the firmware's WAV rules change (`WavReader::isSupported`), update `ACORN_WAV` in
-`wav-encoder.js` too. Keep `utilities.css` visually in step with `web/css/app.css`.
+`wav-encoder.js` too. If the CSV columns change (`Csv::PLAYBACK_HEADER`,
+`Csv::ENVIRONMENT_HEADER`), update the column lists in `acorn-logs.js`. Keep `utilities.css`
+visually in step with `web/css/app.css`.
 
 ### 6.2 Local preview
 

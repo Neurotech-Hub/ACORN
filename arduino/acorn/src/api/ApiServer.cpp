@@ -9,6 +9,7 @@
 #include "../AppConfig.h"
 #include "../audio/PlaybackService.h"
 #include "../config/DeviceConfig.h"
+#include "../config/SiteStore.h"
 #include "../logging/CsvFile.h"
 #include "../program/ActiveProgram.h"
 #include "../program/AudioLibrary.h"
@@ -676,6 +677,39 @@ void putEnvironment() {
   send(200, doc);
 }
 
+void siteJson(JsonObject o) {
+  const Site& s = SiteStore::get();
+  o["set"] = s.valid;
+  SiteJson::toJson(s, o);
+}
+
+void siteSaveFailed(const char* code) {
+  if (strcmp(code, err::SD_NOT_PRESENT) == 0) return fail(503, code, "No SD card detected.");
+  fail(strcmp(code, err::SD_FULL) == 0 ? 507 : 500, code, "The site location could not be saved to the SD card.");
+}
+
+void site(HTTPMethod m) {
+  if (!requireSd()) return;
+  const char* code = "";
+  if (m == HTTP_PUT) {
+    JsonDocument b;
+    if (!readJson(b)) return;
+    Site s;
+    std::string field, message;
+    if (!SiteJson::parse(b.as<JsonVariantConst>(), s, field, message)) {
+      return fail(422, err::SITE_INVALID, message.c_str(), field.empty() ? nullptr : field.c_str());
+    }
+    if (s.source.empty()) s.source = "manual";
+    if (TimeService::isValid()) s.fixedUtc = nowIso().c_str();
+    if (!SiteStore::save(s, code)) return siteSaveFailed(code);
+  } else if (m == HTTP_DELETE) {
+    if (!SiteStore::clear(code)) return siteSaveFailed(code);
+  }
+  JsonDocument doc;
+  siteJson(okData(doc));
+  send(200, doc);
+}
+
 void getLogs() {
   if (!requireSd()) return;
   JsonDocument doc;
@@ -843,6 +877,8 @@ void dispatch(HTTPMethod m, const String& uri) {
     }
     if (m == HTTP_PUT) return putEnvironment();
   }
+
+  if (route == "/site" && (m == HTTP_GET || m == HTTP_PUT || m == HTTP_DELETE)) return site(m);
 
   if (m == HTTP_GET && route == "/logs") return getLogs();
   if (m == HTTP_GET && (route == "/logs/playback" || route == "/logs/environment")) {

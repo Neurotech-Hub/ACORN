@@ -53,6 +53,7 @@ constexpr const char* OTA_FAILED = "OTA_FAILED";
 constexpr const char* DEVICE_NAME_INVALID = "DEVICE_NAME_INVALID";
 constexpr const char* ENV_CONFIG_INVALID = "ENV_CONFIG_INVALID";
 constexpr const char* ENV_INTERVAL_INVALID = "ENV_INTERVAL_INVALID";
+constexpr const char* SITE_INVALID = "SITE_INVALID";
 constexpr const char* UPLOAD_INVALID = "UPLOAD_INVALID";
 constexpr const char* UPLOAD_TOO_LARGE = "UPLOAD_TOO_LARGE";
 constexpr const char* JSON_INVALID = "JSON_INVALID";

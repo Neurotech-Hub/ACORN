@@ -374,10 +374,33 @@ Initial structure:
 │   ├── squirrel-study.json
 │   └── ...
 │
+├── config/
+│   └── site.json        (optional site location)
+│
 └── logs/
     ├── playback.csv
     └── environment.csv
 ```
+
+`/config/site.json` holds the current site location. It travels with the card, so it can be
+prestaged by copying it onto the card before deployment, or set from the Device page:
+
+```json
+{
+  "latitude": 45.123456,
+  "longitude": -93.654321,
+  "accuracy_m": 12.5,
+  "source": "phone_gps",
+  "fixed_utc": "2026-10-24T13:15:00Z",
+  "note": ""
+}
+```
+
+`latitude` and `longitude` are required (decimal degrees; latitude −90..90, longitude −180..180).
+`accuracy_m` (≥ 0), `source` (`phone_gps` | `manual` | `prestage`), `fixed_utc` (ISO-8601 UTC)
+and `note` (≤ 120 characters) are optional. A missing or invalid file means no site location:
+log rows get empty latitude/longitude cells and operation is not blocked. Clearing the site from
+the UI deletes the file.
 
 No first-class "deployment" directory or deployment workflow is required in v1.
 
@@ -1285,14 +1308,18 @@ File:
 Recommended header:
 
 ```csv
-timestamp_utc,temperature_c,relative_humidity_pct,ambient_light_lux,battery_voltage,battery_percent
+timestamp_utc,temperature_c,relative_humidity_pct,ambient_light_lux,battery_voltage,battery_percent,latitude,longitude
 ```
 
 Example:
 
 ```csv
-2026-09-27T18:10:00Z,4.8,63.2,127.4,11.84,76
+2026-09-27T18:10:00Z,4.8,63.2,127.4,11.84,76,45.123456,-93.654321
 ```
+
+`latitude,longitude` are the site location (`/config/site.json`, §6) current when the row was
+written, with 6 decimal places, or empty cells when no site is set. Changing the site only affects
+rows written afterwards.
 
 Environmental values should use sensible sensor-level precision rather than excessive decimal places.
 
@@ -1309,22 +1336,27 @@ File:
 Recommended header:
 
 ```csv
-actual_utc,scheduled_utc,program_id,program_revision,event_id,source,audio,volume,duration_ms,result,error_code,battery_voltage,battery_percent,temperature_c,relative_humidity_pct,ambient_light_lux
+actual_utc,scheduled_utc,program_id,program_revision,event_id,source,audio,volume,duration_ms,result,error_code,battery_voltage,battery_percent,temperature_c,relative_humidity_pct,ambient_light_lux,latitude,longitude
 ```
 
 Example scheduled playback:
 
 ```csv
-2026-09-27T18:10:00Z,2026-09-27T18:10:00Z,squirrel-study,a81f92c1,daytime-playback,scheduled,/audio/playback.wav,80,5032,ok,,11.84,76,4.8,63.2,127.4
+2026-09-27T18:10:00Z,2026-09-27T18:10:00Z,squirrel-study,a81f92c1,daytime-playback,scheduled,/audio/playback.wav,80,5032,ok,,11.84,76,4.8,63.2,127.4,45.123456,-93.654321
 ```
 
 Example manual playback:
 
 ```csv
-2026-09-27T18:12:41Z,,squirrel-study,a81f92c1,daytime-playback,manual_test,/audio/playback.wav,80,5032,ok,,11.83,76,4.8,63.3,126.9
+2026-09-27T18:12:41Z,,squirrel-study,a81f92c1,daytime-playback,manual_test,/audio/playback.wav,80,5032,ok,,11.83,76,4.8,63.3,126.9,,
 ```
 
-Environmental fields may be blank if a valid measurement cannot be obtained.
+Environmental fields may be blank if a valid measurement cannot be obtained. `latitude,longitude`
+follow the same rule as the environmental log (§35): blank when no site location is set.
+
+If an existing log's first line is not the current header (a card written by older firmware), the
+file is renamed to `playback.csv.bak` / `environment.csv.bak` (replacing an older `.bak`) and a new
+file is started, so rows are never appended under a mismatched header.
 
 ---
 
@@ -1685,6 +1717,10 @@ POST /api/v1/programs/{id}/activate
 
 GET  /api/v1/environment
 PUT  /api/v1/environment
+
+GET    /api/v1/site
+PUT    /api/v1/site
+DELETE /api/v1/site
 
 GET  /api/v1/logs
 GET  /api/v1/logs/playback

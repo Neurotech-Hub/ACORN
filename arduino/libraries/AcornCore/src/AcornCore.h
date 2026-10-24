@@ -12,5 +12,6 @@
 #include "ProgramJson.h"
 #include "ProgramValidator.h"
 #include "Scheduler.h"
+#include "Site.h"
 #include "UtcTime.h"
 #include "WakePlanner.h"

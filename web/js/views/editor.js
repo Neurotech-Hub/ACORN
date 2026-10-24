@@ -637,7 +637,7 @@ export function mount(el, { params }) {
     valBtn.onclick = () => doValidate(valBtn);
     const prevBtn = button('Preview schedule', { kind: 'primary', iconName: 'eye' });
     prevBtn.onclick = () => doPreview(prevBtn);
-    const countSel = h('select', { class: 'select', style: { width: 'auto' }, 'aria-label': 'Preview length' },
+    const countSel = h('select', { class: 'select', 'aria-label': 'Preview length' },
       [25, 100, 250].map((n) => h('option', { value: n, selected: n === previewCount }, `${n} events`)));
     countSel.onchange = () => { previewCount = +countSel.value; };
 
@@ -661,15 +661,20 @@ export function mount(el, { params }) {
         kind: 'add-event', iconName: 'plus', onclick: addEvent,
         disabled: draft.events.length >= 32,
       }),
-      section('Check', countSel, valBtn, prevBtn),
+      section('Check'),
       h('p', { class: 'muted small', style: { marginBottom: '12px' } },
         'The device validates the whole program and generates the preview with the same scheduler used for playback.'),
+      h('div', { class: 'check-actions' },
+        valBtn,
+        h('div', { class: 'group' }, countSel, prevBtn)),
       validationHost,
       h('div', { style: { height: '12px' } }),
       previewHost,
       h('details', { class: 'json' }, h('summary', null, 'Program JSON'), jsonPre),
+      h('div', { class: 'save-bar-spacer' }),
       saveBar,
     );
+    keyboardShift();
     renderTimeline();
     renderValidation();
     renderPreview();
@@ -677,12 +682,37 @@ export function mount(el, { params }) {
     applyErrors();
   }
 
+  // The save bar is fixed to the bottom of the layout viewport. Browsers that shrink the layout
+  // viewport for the on-screen keyboard would lift it on top of the keyboard; push it back down
+  // by the shrink so it stays behind the keyboard instead of riding along with the focused input.
+  let fullHeight = window.innerHeight;
+  function keyboardShift() {
+    if (!saveBar) return;
+    const hgt = window.innerHeight;
+    const typing = !!document.activeElement?.matches?.('input, textarea, select, [contenteditable="true"]');
+    if (!typing || hgt > fullHeight) fullHeight = hgt;
+    const shift = typing && fullHeight - hgt > 120 ? fullHeight - hgt : 0;
+    saveBar.style.setProperty('--kb-shift', `${shift}px`);
+  }
+  const onViewport = () => keyboardShift();
+  const onFocusChange = () => setTimeout(keyboardShift, 0);
+  window.addEventListener('resize', onViewport);
+  window.visualViewport?.addEventListener('resize', onViewport);
+  document.addEventListener('focusin', onFocusChange);
+  document.addEventListener('focusout', onFocusChange);
+
   load();
 
   const nowTimer = setInterval(() => draft && renderTimeline(), 30000);
   return {
     isDirty: () => dirty() || (isNew && !!draft && !!note),
     canLeave: async () => !(dirty() || (isNew && draft && note)) || confirmDiscard(),
-    unmount: () => clearInterval(nowTimer),
+    unmount: () => {
+      clearInterval(nowTimer);
+      window.removeEventListener('resize', onViewport);
+      window.visualViewport?.removeEventListener('resize', onViewport);
+      document.removeEventListener('focusin', onFocusChange);
+      document.removeEventListener('focusout', onFocusChange);
+    },
   };
 }

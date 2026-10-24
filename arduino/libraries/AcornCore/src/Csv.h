@@ -12,9 +12,11 @@ namespace Csv {
 
 constexpr const char* PLAYBACK_HEADER =
     "actual_utc,scheduled_utc,program_id,program_revision,event_id,source,audio,volume,duration_ms,"
-    "result,error_code,battery_voltage,battery_percent,temperature_c,relative_humidity_pct,ambient_light_lux";
+    "result,error_code,battery_voltage,battery_percent,temperature_c,relative_humidity_pct,ambient_light_lux,"
+    "latitude,longitude";
 constexpr const char* ENVIRONMENT_HEADER =
-    "timestamp_utc,temperature_c,relative_humidity_pct,ambient_light_lux,battery_voltage,battery_percent";
+    "timestamp_utc,temperature_c,relative_humidity_pct,ambient_light_lux,battery_voltage,battery_percent,"
+    "latitude,longitude";
 
 struct Telemetry {
   bool batteryValid = false;
@@ -25,6 +27,13 @@ struct Telemetry {
   float humidityPct = 0;
   bool lightValid = false;
   float lux = 0;
+};
+
+// Site fix current when the row is written (/config/site.json); empty cells when unset.
+struct Location {
+  bool valid = false;
+  double latitude = 0;
+  double longitude = 0;
 };
 
 struct PlaybackRow {
@@ -40,11 +49,13 @@ struct PlaybackRow {
   std::string result;  // ok | stopped | error
   std::string errorCode;
   Telemetry telemetry;
+  Location location;
 };
 
 std::string field(const std::string& s);  // quotes when needed
+std::string coordinate(double degrees);   // 6 decimal places (~0.1 m)
 std::string playbackRow(const PlaybackRow& r);
-std::string environmentRow(const std::string& timestampUtc, const Telemetry& t);
+std::string environmentRow(const std::string& timestampUtc, const Telemetry& t, const Location& location = {});
 
 }  // namespace Csv
 }  // namespace acorn

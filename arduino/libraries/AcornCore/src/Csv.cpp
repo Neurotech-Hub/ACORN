@@ -26,7 +26,17 @@ void appendTelemetry(std::string& out, const Telemetry& t, bool batteryFirst) {
   out += batteryFirst ? battery + "," + env : env + "," + battery;
 }
 
+void appendLocation(std::string& out, const Location& l) {
+  out += l.valid ? "," + coordinate(l.latitude) + "," + coordinate(l.longitude) : ",,";
+}
+
 }  // namespace
+
+std::string coordinate(double degrees) {
+  char buf[24];
+  snprintf(buf, sizeof(buf), "%.6f", degrees);
+  return buf;
+}
 
 std::string field(const std::string& s) {
   if (s.find_first_of(",\"\r\n") == std::string::npos) return s;
@@ -45,12 +55,14 @@ std::string playbackRow(const PlaybackRow& r) {
          "," + field(r.eventId) + "," + field(r.source) + "," + field(r.audio) + "," + integer(r.volume) + "," +
          integer(r.durationMs) + "," + field(r.result) + "," + field(r.errorCode) + ",";
   appendTelemetry(out, r.telemetry, true);
+  appendLocation(out, r.location);
   return out;
 }
 
-std::string environmentRow(const std::string& timestampUtc, const Telemetry& t) {
+std::string environmentRow(const std::string& timestampUtc, const Telemetry& t, const Location& location) {
   std::string out = field(timestampUtc) + ",";
   appendTelemetry(out, t, false);
+  appendLocation(out, location);
   return out;
 }
 

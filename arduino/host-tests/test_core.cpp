@@ -480,14 +480,73 @@ TEST(csv_rows) {
   r.telemetry.batteryVoltage = 12.614f;
   r.telemetry.batteryPercent = 92;
   CHECK_EQ(Csv::playbackRow(r), std::string("2026-09-27T06:00:01Z,2026-09-27T06:00:00Z,default,0123abcd,"
-                                            "daytime-playback,scheduled,/audio/playback.wav,80,5032,ok,,12.61,92,,,"));
+                                            "daytime-playback,scheduled,/audio/playback.wav,80,5032,ok,,12.61,92,,,,,"));
+  r.location = {true, 45.1234564, -93.6543216};
+  CHECK_EQ(Csv::playbackRow(r), std::string("2026-09-27T06:00:01Z,2026-09-27T06:00:00Z,default,0123abcd,"
+                                            "daytime-playback,scheduled,/audio/playback.wav,80,5032,ok,,12.61,92,,,,"
+                                            "45.123456,-93.654322"));
   Csv::Telemetry t;
   t.envValid = true;
   t.temperatureC = 21.26f;
   t.humidityPct = 48.04f;
-  CHECK_EQ(Csv::environmentRow("2026-09-27T06:00:00Z", t), std::string("2026-09-27T06:00:00Z,21.3,48.0,,,"));
+  CHECK_EQ(Csv::environmentRow("2026-09-27T06:00:00Z", t), std::string("2026-09-27T06:00:00Z,21.3,48.0,,,,,"));
+  CHECK_EQ(Csv::environmentRow("2026-09-27T06:00:00Z", t, {true, -0.5, 179.999999}),
+           std::string("2026-09-27T06:00:00Z,21.3,48.0,,,,-0.500000,179.999999"));
   CHECK_EQ(Csv::field("a,b"), std::string("\"a,b\""));
   CHECK_EQ(Csv::field("say \"hi\""), std::string("\"say \"\"hi\"\"\""));
+}
+
+TEST(csv_headers) {
+  CHECK_EQ(std::string(Csv::PLAYBACK_HEADER),
+           std::string("actual_utc,scheduled_utc,program_id,program_revision,event_id,source,audio,volume,"
+                       "duration_ms,result,error_code,battery_voltage,battery_percent,temperature_c,"
+                       "relative_humidity_pct,ambient_light_lux,latitude,longitude"));
+  CHECK_EQ(std::string(Csv::ENVIRONMENT_HEADER),
+           std::string("timestamp_utc,temperature_c,relative_humidity_pct,ambient_light_lux,battery_voltage,"
+                       "battery_percent,latitude,longitude"));
+}
+
+static bool parseSite(const char* json, Site& s, std::string& field) {
+  JsonDocument doc;
+  deserializeJson(doc, json);
+  std::string message;
+  return SiteJson::parse(doc.as<JsonVariantConst>(), s, field, message);
+}
+
+TEST(site_json) {
+  Site s;
+  std::string field;
+  CHECK(parseSite(R"({"latitude":45.123456,"longitude":-93.654321,"accuracy_m":12.5,"source":"phone_gps",)"
+                  R"("fixed_utc":"2026-10-24T13:15:00Z","note":"north plot"})", s, field));
+  CHECK(s.valid && s.hasAccuracy && s.source == "phone_gps" && s.note == "north plot");
+  CHECK(parseSite(R"({"latitude":0,"longitude":180})", s, field));
+  CHECK(!s.hasAccuracy && s.source.empty() && s.fixedUtc.empty());
+  CHECK(!parseSite(R"({"latitude":91,"longitude":0})", s, field));
+  CHECK_EQ(field, std::string("latitude"));
+  CHECK(!parseSite(R"({"latitude":"45","longitude":0})", s, field));
+  CHECK_EQ(field, std::string("latitude"));
+  CHECK(!parseSite(R"({"latitude":45,"longitude":-180.5})", s, field));
+  CHECK_EQ(field, std::string("longitude"));
+  CHECK(!parseSite(R"({"latitude":45})", s, field));
+  CHECK_EQ(field, std::string("longitude"));
+  CHECK(!parseSite(R"({"latitude":45,"longitude":1,"accuracy_m":-1})", s, field));
+  CHECK_EQ(field, std::string("accuracy_m"));
+  CHECK(!parseSite(R"({"latitude":45,"longitude":1,"source":"satellite"})", s, field));
+  CHECK_EQ(field, std::string("source"));
+  CHECK(!parseSite(R"({"latitude":45,"longitude":1,"fixed_utc":"2026-10-24 13:15"})", s, field));
+  CHECK_EQ(field, std::string("fixed_utc"));
+  CHECK(!parseSite(R"([1,2])", s, field));
+
+  JsonDocument out;
+  SiteJson::toJson(Site{}, out.to<JsonObject>());
+  CHECK(out["latitude"].isNull() && out["longitude"].isNull());
+  CHECK(parseSite(R"({"latitude":45.1234564,"longitude":-93.6543216})", s, field));
+  JsonDocument out2;
+  SiteJson::toJson(s, out2.to<JsonObject>());
+  std::string text;
+  serializeJson(out2, text);
+  CHECK(text.find("\"latitude\":45.123456,") != std::string::npos);
+  CHECK(text.find("\"longitude\":-93.654322") != std::string::npos);
 }
 
 // ---- Golden previews (compared against the mock by tools/check-mock-golden.mjs)

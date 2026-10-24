@@ -99,6 +99,10 @@ export const api = {
   environment: () => request('GET', '/environment'),
   updateEnvironment: (patch) => request('PUT', '/environment', patch),
 
+  getSite: () => request('GET', '/site'),
+  updateSite: (site) => request('PUT', '/site', site),
+  clearSite: () => request('DELETE', '/site'),
+
   logs: () => request('GET', '/logs'),
   logTail: (kind, n = 20) => request('GET', `/logs/${kind}?tail=${n}`),
   logUrl: (kind) => `${BASE}/logs/${kind}`,

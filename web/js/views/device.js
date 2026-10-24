@@ -1,4 +1,4 @@
-// Device: identity, time, battery model, firmware (OTA) and diagnostics.
+// Device: identity, time, site location, battery model, firmware (OTA) and diagnostics.
 
 import { api } from '../api.js';
 import { store, refresh, deviceNow } from '../store.js';
@@ -12,13 +12,16 @@ const OFFSETS = Array.from({ length: (840 + 720) / 15 + 1 }, (_, i) => -720 + i 
 export function mount(el) {
   let dev = null;
   let fw = null;
-  const staged = { name: null, offset: null };
-  const saved = { name: null, offset: null };
+  const staged = { name: null, offset: null, site: null };
+  const saved = { name: null, offset: null, site: null };
   const dirtyOf = (k) => JSON.stringify(staged[k]) !== JSON.stringify(saved[k]);
-  const anyDirty = () => ['name', 'offset'].some(dirtyOf);
+  const anyDirty = () => ['name', 'offset', 'site'].some(dirtyOf);
 
   const identityHost = h('div');
   const timeHost = h('div');
+  const siteHost = h('div');
+  let site = null;  // GET /site data, or null when it could not be read
+  let siteError = null;
   const batteryHost = h('div');
   const firmwareHost = h('div');
   const diagHost = h('div');
@@ -131,6 +134,156 @@ export function mount(el) {
       await refresh();
       renderTime();
     } catch (e) { toastError(e); }
+  }
+
+  // ---- site location (/config/site.json) ------------------------------------------------
+  const SITE_SOURCES = { phone_gps: 'Phone GPS', manual: 'Manual entry', prestage: 'Prestaged on SD' };
+
+  // Staged form values: coordinates as typed text so partial input is kept while editing.
+  const siteForm = (s) => (s && s.set
+    ? { latitude: String(s.latitude), longitude: String(s.longitude), accuracy_m: s.accuracy_m, source: s.source, note: s.note || '' }
+    : { latitude: '', longitude: '', accuracy_m: null, source: null, note: '' });
+
+  const coord = (text, limit) => {
+    const t = text.trim();
+    if (!/^[-+]?\d+(\.\d+)?$/.test(t)) return null;
+    const v = +t;
+    return Math.abs(v) <= limit ? v : null;
+  };
+
+  function locate(btn) {
+    return busy(btn, () => new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition((pos) => {
+        const { latitude, longitude, accuracy } = pos.coords;
+        staged.site = {
+          ...staged.site, latitude: latitude.toFixed(6), longitude: longitude.toFixed(6),
+          accuracy_m: Number.isFinite(accuracy) ? Math.round(accuracy * 10) / 10 : null, source: 'phone_gps',
+        };
+        toast(`Location found (±${Math.round(accuracy)} m). Save & Apply to store it.`, 'ok');
+        renderSite();
+        resolve();
+      }, (e) => {
+        const msg = e.code === e.PERMISSION_DENIED ? 'Location permission was denied. Enter coordinates manually.'
+          : e.code === e.TIMEOUT ? 'No GPS fix yet. Move to open sky and try again, or enter coordinates manually.'
+            : 'Location is unavailable on this phone. Enter coordinates manually.';
+        toast(msg, 'fault');
+        resolve();
+      }, { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 });
+    }));
+  }
+
+  function renderSite() {
+    if (siteError) {
+      replace(siteHost, notice('warn', 'Site location unavailable', siteError));
+      return;
+    }
+    if (!site) return;
+    const s = staged.site;
+    const geoOk = !!navigator.geolocation && window.isSecureContext;
+    const lat = h('input', { class: 'input mono', value: s.latitude, inputmode: 'decimal', placeholder: '45.123456', autocomplete: 'off' });
+    const lon = h('input', { class: 'input mono', value: s.longitude, inputmode: 'decimal', placeholder: '-93.654321', autocomplete: 'off' });
+    const note = h('input', { class: 'input', value: s.note, maxlength: 120, placeholder: 'Optional, e.g. north plot' });
+    const refreshActions = () => { actions.replaceWith(actions = siteActions()); };
+    const typed = (key, input) => () => {
+      // Typing a coordinate replaces a phone fix: its accuracy no longer describes the value.
+      staged.site = { ...staged.site, [key]: input.value, ...(key === 'note' ? {} : { accuracy_m: null, source: 'manual' }) };
+      refreshActions();
+    };
+    lat.oninput = typed('latitude', lat);
+    lon.oninput = typed('longitude', lon);
+    note.oninput = typed('note', note);
+
+    function siteActions() {
+      const cur = staged.site;
+      const valid = coord(cur.latitude, 90) !== null && coord(cur.longitude, 180) !== null;
+      const row = saveRow('site', saveSite);
+      const save = row.lastChild;
+      save.disabled = !dirtyOf('site') || !valid;
+      return row;
+    }
+    let actions = siteActions();
+
+    const locBtn = button('Use phone location', { iconName: 'pin', disabled: !geoOk });
+    locBtn.onclick = () => locate(locBtn);
+    const clearBtn = site.set && button('Clear', { kind: 'ghost', size: 'sm', iconName: 'trash' });
+    if (clearBtn) clearBtn.onclick = () => clearSite(clearBtn);
+
+    const summary = site.set
+      ? h('dl', { class: 'kv' },
+        h('dt', null, 'Latitude'), h('dd', { class: 'mono' }, site.latitude.toFixed(6)),
+        h('dt', null, 'Longitude'), h('dd', { class: 'mono' }, site.longitude.toFixed(6)),
+        h('dt', null, 'Accuracy'), h('dd', null, site.accuracy_m != null ? `±${site.accuracy_m} m` : '—'),
+        h('dt', null, 'Source'), h('dd', null, SITE_SOURCES[site.source] || '—'),
+        h('dt', null, 'Fixed'), h('dd', { class: 'mono' }, site.fixed_utc || '—'),
+        site.note && h('dt', null, 'Note'), site.note && h('dd', null, site.note))
+      : h('p', { class: 'muted' }, 'Not set. Log rows are written with empty latitude/longitude cells; playback is not affected.');
+
+    replace(siteHost, h('div', { class: 'grid two' },
+      h('div', { class: 'card stack', style: { alignContent: 'start' } },
+        h('div', { class: 'card-head', style: { marginBottom: 0 } },
+          h('div', { class: 'eyebrow' }, 'Stored on SD card'), clearBtn && h('div', { class: 'actions' }, clearBtn)),
+        summary,
+        h('p', { class: 'muted small' }, 'Stamped into every new playback and environment log row. Earlier rows keep the location that was current when they were written.')),
+      h('div', { class: 'card form' },
+        h('div', { class: 'stack', style: { gap: '6px' } },
+          h('div', { class: 'row' }, locBtn,
+            staged.site.source === 'phone_gps' && staged.site.accuracy_m != null && dirtyOf('site') &&
+              h('span', { class: 'muted small' }, `±${staged.site.accuracy_m} m fix staged`)),
+          h('div', { class: 'muted small' }, geoOk
+            ? 'Phone GPS works without internet but needs open sky; the first fix can take a minute.'
+            : 'This browser only shares location over a secure connection, which the device Wi-Fi is not. Read the coordinates from your phone’s maps or compass app and enter them below.')),
+        h('div', { class: 'form-row' },
+          field('Latitude', lat, { key: 'latitude', hint: 'Decimal degrees, -90 to 90 (north positive).' }),
+          field('Longitude', lon, { key: 'longitude', hint: 'Decimal degrees, -180 to 180 (east positive).' })),
+        field('Note', note),
+        actions)));
+  }
+
+  async function saveSite() {
+    const s = staged.site;
+    const body = { latitude: coord(s.latitude, 90), longitude: coord(s.longitude, 180), source: s.source || 'manual', note: s.note.trim() };
+    if (s.accuracy_m != null) body.accuracy_m = s.accuracy_m;
+    try {
+      site = await api.updateSite(body);
+      saved.site = staged.site = siteForm(site);
+      toast('Site location saved. New log rows carry it.', 'ok');
+      refresh();
+      renderSite();
+    } catch (e) { toastError(e); }
+  }
+
+  async function clearSite(btn) {
+    const ok = await confirmDialog({
+      title: 'Clear site location?',
+      body: [
+        h('p', null, 'Deletes /config/site.json from the SD card.'),
+        h('p', { class: 'muted' }, 'New log rows will have empty latitude/longitude. Existing rows are not changed.'),
+      ],
+      confirm: 'Clear', danger: true,
+    });
+    if (!ok) return;
+    await busy(btn, async () => {
+      try {
+        site = await api.clearSite();
+        saved.site = staged.site = siteForm(site);
+        toast('Site location cleared.', 'ok');
+        refresh();
+        renderSite();
+      } catch (e) { toastError(e); }
+    });
+  }
+
+  async function loadSite() {
+    try {
+      site = await api.getSite();
+      siteError = null;
+    } catch (e) {
+      site = null;
+      siteError = e.code === 'SD_NOT_PRESENT' || e.code === 'SD_MOUNT_FAILED'
+        ? 'The site location is stored on the SD card. Insert a card to view or set it.'
+        : e.message;
+    }
+    saved.site = staged.site = siteForm(site);
   }
 
   function tickClock() {
@@ -314,6 +467,7 @@ export function mount(el) {
   function renderAll() {
     renderIdentity();
     renderTime();
+    renderSite();
     renderBattery();
     renderFirmware();
     renderDiag();
@@ -322,7 +476,7 @@ export function mount(el) {
   async function load() {
     replace(el, pageHead('Device'), skeleton([140, 200, 200]));
     try {
-      [dev, fw] = await Promise.all([api.device(), api.firmware()]);
+      [dev, fw] = await Promise.all([api.device(), api.firmware(), loadSite()]);
       const st = store.status || (await refresh());
       saved.name = staged.name = dev.name;
       saved.offset = staged.offset = st.time.utc_offset_minutes;
@@ -330,6 +484,7 @@ export function mount(el) {
         pageHead('Device'),
         section('Identity'), identityHost,
         section('Time'), timeHost,
+        section('Site location'), siteHost,
         section('Battery'), batteryHost,
         section('Firmware'), firmwareHost,
         section('Diagnostics'), diagHost,
@@ -343,11 +498,15 @@ export function mount(el) {
   load();
   const tick = setInterval(tickClock, 1000);
   let lastRtc = null;
+  let lastSd = null;
   return {
     onStatus(st) {
       renderDiag();
       if (dev && lastRtc !== null && lastRtc !== st.time.rtc_valid) renderTime();
       lastRtc = st.time.rtc_valid;
+      // SD inserted or removed: reload the site unless the operator has unsaved edits.
+      if (dev && lastSd !== null && lastSd !== st.sd.mounted && !dirtyOf('site')) loadSite().then(renderSite);
+      lastSd = st.sd.mounted;
       if (dev) renderBattery();
     },
     isDirty: anyDirty,

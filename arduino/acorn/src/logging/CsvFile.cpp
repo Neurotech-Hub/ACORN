@@ -55,17 +55,16 @@ size_t tailOffset(fs::File& f, uint32_t rows) {
   return 0;
 }
 
-}  // namespace
+String firstLine(fs::FS& fs, const char* path) {
+  File f = fs.open(path, FILE_READ);
+  if (!f) return "";
+  String line = f.readStringUntil('\n');
+  f.close();
+  line.trim();
+  return line;
+}
 
-bool ensure(const char* path, const char* header) {
-  fs::FS& fs = SdHardware::fs();
-  if (!fs.exists(app::LOGS_DIR)) fs.mkdir(app::LOGS_DIR);
-  if (fs.exists(path)) {
-    File f = fs.open(path, FILE_READ);
-    const bool nonEmpty = f && f.size() > 0;
-    f.close();
-    if (nonEmpty) return true;
-  }
+bool writeHeader(fs::FS& fs, const char* path, const char* header) {
   File f = fs.open(path, FILE_WRITE);
   if (!f) return false;
   const size_t len = strlen(header);
@@ -76,8 +75,35 @@ bool ensure(const char* path, const char* header) {
   return ok;
 }
 
+// Creates the file with its header if missing or empty.
+bool ready(const char* path, const char* header) {
+  fs::FS& fs = SdHardware::fs();
+  if (!fs.exists(app::LOGS_DIR)) fs.mkdir(app::LOGS_DIR);
+  if (fs.exists(path)) {
+    File f = fs.open(path, FILE_READ);
+    const bool nonEmpty = f && f.size() > 0;
+    f.close();
+    if (nonEmpty) return true;
+  }
+  return writeHeader(fs, path, header);
+}
+
+}  // namespace
+
+bool ensure(const char* path, const char* header) {
+  if (!ready(path, header)) return false;
+  fs::FS& fs = SdHardware::fs();
+  if (firstLine(fs, path) == header) return true;
+  // Older column layout: keep it as <path>.bak and start a fresh file.
+  const String bak = String(path) + ".bak";
+  if (fs.exists(bak)) fs.remove(bak);
+  if (!fs.rename(path, bak)) return false;
+  rowCache.erase(path);
+  return writeHeader(fs, path, header);
+}
+
 bool append(const char* path, const char* header, const String& row) {
-  if (!ensure(path, header)) return false;
+  if (!ready(path, header)) return false;
   File f = SdHardware::fs().open(path, FILE_APPEND);
   if (!f) return false;
   const bool ok = f.write(reinterpret_cast<const uint8_t*>(row.c_str()), row.length()) == row.length() &&

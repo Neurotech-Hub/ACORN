@@ -20,6 +20,8 @@ constexpr const char* PROGRAMS_DIR = "/programs";
 constexpr const char* LOGS_DIR = "/logs";
 constexpr const char* PLAYBACK_LOG = "/logs/playback.csv";
 constexpr const char* ENVIRONMENT_LOG = "/logs/environment.csv";
+constexpr const char* CONFIG_DIR = "/config";
+constexpr const char* SITE_PATH = "/config/site.json";
 constexpr const char* FALLBACK_AUDIO = "/audio/playback.wav";
 
 constexpr uint8_t FALLBACK_VOLUME = 80;   // BTN_01 fallback WAV / sine

@@ -13,7 +13,33 @@ export const SCENARIOS = {
   'rtc-invalid': { label: 'RTC not set', description: 'RTC lost power; time must be synchronized before arming.' },
   'low-battery': { label: 'Low battery', description: 'Battery at ~5%.' },
   'sensor-fail': { label: 'Sensor read failure', description: 'Environmental sensors not responding (non-blocking).' },
+  'no-site': { label: 'No site location', description: 'No /config/site.json on the SD card; log rows have empty latitude/longitude.' },
 };
+
+const SITE_SOURCES = ['phone_gps', 'manual', 'prestage'];
+const MAX_SITE_NOTE = 120;
+
+// Mirrors AcornCore SiteJson::parse. Returns { site } or { field, message }.
+export function parseSite(b) {
+  const num = (v) => typeof v === 'number' && Number.isFinite(v);
+  if (!b || typeof b !== 'object' || Array.isArray(b)) return { field: null, message: 'Site must be a JSON object.' };
+  if (!num(b.latitude) || b.latitude < -90 || b.latitude > 90) return { field: 'latitude', message: 'Latitude must be a number from -90 to 90.' };
+  if (!num(b.longitude) || b.longitude < -180 || b.longitude > 180) return { field: 'longitude', message: 'Longitude must be a number from -180 to 180.' };
+  if (b.accuracy_m != null && (!num(b.accuracy_m) || b.accuracy_m < 0)) return { field: 'accuracy_m', message: 'Accuracy must be a number of metres, 0 or more.' };
+  if (b.source != null && !SITE_SOURCES.includes(b.source)) return { field: 'source', message: 'Source must be phone_gps, manual or prestage.' };
+  if (b.fixed_utc != null && !(typeof b.fixed_utc === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test(b.fixed_utc) && !Number.isNaN(Date.parse(b.fixed_utc)))) {
+    return { field: 'fixed_utc', message: 'fixed_utc must be an ISO time such as 2026-10-24T13:15:00Z.' };
+  }
+  if (b.note != null && (typeof b.note !== 'string' || b.note.length > MAX_SITE_NOTE)) return { field: 'note', message: 'Note must be text of at most 120 characters.' };
+  return {
+    site: {
+      latitude: +b.latitude.toFixed(6), longitude: +b.longitude.toFixed(6), accuracy_m: b.accuracy_m ?? null,
+      source: b.source ?? null, fixed_utc: b.fixed_utc ?? null, note: b.note ?? '',
+    },
+  };
+}
+
+const NO_SITE = { latitude: null, longitude: null, accuracy_m: null, source: null, fixed_utc: null, note: null };
 
 const DEFAULT_BATTERY_MODEL = {
   name: 'M12 Li-ion (default)',
@@ -70,8 +96,8 @@ function seedPrograms(nowIso) {
   ]);
 }
 
-const PLAYBACK_HEADER = 'actual_utc,scheduled_utc,program_id,program_revision,event_id,source,audio,volume,duration_ms,result,error_code,battery_voltage,battery_percent,temperature_c,relative_humidity_pct,ambient_light_lux';
-const ENV_HEADER = 'timestamp_utc,temperature_c,relative_humidity_pct,ambient_light_lux,battery_voltage,battery_percent';
+const PLAYBACK_HEADER = 'actual_utc,scheduled_utc,program_id,program_revision,event_id,source,audio,volume,duration_ms,result,error_code,battery_voltage,battery_percent,temperature_c,relative_humidity_pct,ambient_light_lux,latitude,longitude';
+const ENV_HEADER = 'timestamp_utc,temperature_c,relative_humidity_pct,ambient_light_lux,battery_voltage,battery_percent,latitude,longitude';
 
 export class MockDevice {
   constructor(scenario = 'normal') {
@@ -96,6 +122,10 @@ export class MockDevice {
     this.lastActivityMs = now;
     this.idleTimeoutS = 600;
     this.rebootUntil = 0;
+    this.site = {
+      latitude: 44.977753, longitude: -93.265011, accuracy_m: 8, source: 'phone_gps',
+      fixed_utc: isoUtc(now - 3 * DAY_MS), note: 'North plot, oak stand',
+    };
     this.applyScenario();
     this.historyPlayback = this.buildPlaybackHistory(now - 36 * 3600_000, now);
   }
@@ -122,6 +152,7 @@ export class MockDevice {
         break;
       case 'low-battery': this.batteryVoltage = 10.28; break;
       case 'sensor-fail': this.sensorFail = true; break;
+      case 'no-site': this.site = null; break;
     }
   }
 
@@ -175,6 +206,10 @@ export class MockDevice {
       return { name, path, ...meta, referenced_by, in_active_program: !!active && referenced_by.includes(active.id) };
     });
   }
+
+  // ---- site -------------------------------------------------------------------------------
+  siteJson() { return this.site ? { set: true, ...this.site } : { set: false, ...NO_SITE }; }
+  siteCells() { return this.site ? [this.site.latitude.toFixed(6), this.site.longitude.toFixed(6)] : ['', '']; }
 
   // ---- programs ---------------------------------------------------------------------------
   activeProgram() { return this.activeId ? this.programs.get(this.activeId) || null : null; }
@@ -233,6 +268,7 @@ export class MockDevice {
       pb.started_utc, '', p?.id || '', p ? programRevision(p) : '', '', pb.source, pb.audio || 'builtin:sine', pb.volume,
       result === 'ok' ? pb.duration_ms : Date.now() - pb.startedReal, result, '',
       this.batteryVoltage.toFixed(2), this.batteryPercent(), r.temperature_c ?? '', r.relative_humidity_pct ?? '', r.ambient_light_lux ?? '',
+      ...this.siteCells(),
     ].join(','));
   }
 
@@ -275,6 +311,7 @@ export class MockDevice {
       uptime_s: Math.round((Date.now() - this.bootMs) / 1000),
       battery: this.battery(),
       sd: this.sdInfo(),
+      site: this.sd.present && this.site ? { ...this.site } : null,
       environment: { ...this.readings(now), sampled_utc: isoUtc(now), logging_enabled: this.env.enabled, interval_minutes: this.env.interval_minutes },
       program: !p ? null : !this.sd.present ? {
         id: p.id, name: null, revision: null, valid: false, loaded: false, window: null,
@@ -306,6 +343,7 @@ export class MockDevice {
       return [
         e.scheduled_utc, e.scheduled_utc, p.id, rev, e.event_id, 'scheduled', e.audio, e.volume, dur, 'ok', '',
         (this.batteryVoltage + 0.04).toFixed(2), this.batteryPercent(this.batteryVoltage + 0.04), r.temperature_c ?? '', r.relative_humidity_pct ?? '', r.ambient_light_lux ?? '',
+        ...this.siteCells(),
       ].join(',');
     });
   }
@@ -320,7 +358,7 @@ export class MockDevice {
     const now = this.nowMs();
     for (let t = Math.floor((now - DAY_MS) / iv) * iv; t <= now; t += iv) {
       const r = this.readings(t);
-      rows.push([isoUtc(t), r.temperature_c ?? '', r.relative_humidity_pct ?? '', r.ambient_light_lux ?? '', this.batteryVoltage.toFixed(2), this.batteryPercent()].join(','));
+      rows.push([isoUtc(t), r.temperature_c ?? '', r.relative_humidity_pct ?? '', r.ambient_light_lux ?? '', this.batteryVoltage.toFixed(2), this.batteryPercent(), ...this.siteCells()].join(','));
     }
     return rows;
   }
