@@ -51,6 +51,7 @@ constexpr const char* OTA_INVALID = "OTA_INVALID";
 constexpr const char* OTA_FAILED = "OTA_FAILED";
 
 constexpr const char* DEVICE_NAME_INVALID = "DEVICE_NAME_INVALID";
+constexpr const char* IGNORE_MAGNET_INVALID = "IGNORE_MAGNET_INVALID";
 constexpr const char* ENV_CONFIG_INVALID = "ENV_CONFIG_INVALID";
 constexpr const char* ENV_INTERVAL_INVALID = "ENV_INTERVAL_INVALID";
 constexpr const char* SITE_INVALID = "SITE_INVALID";

@@ -138,5 +138,40 @@ sessionTick = setInterval(() => {
   }
 }, 1000);
 
+// iOS keeps position:fixed bars on the layout viewport while the keyboard scrolls the
+// focused field into the visual viewport, so the nav and save bar end up covering the
+// field. Hide both until editing finishes. A desktop focus does not shrink the viewport,
+// so the bars stay put there.
+let layoutHeight = window.innerHeight;
+let keyboardWasOpen = false;
+
+function editingField() {
+  const el = document.activeElement;
+  if (!el || !el.matches('input, textarea, select')) return null;
+  if (el.matches('input[type="button"], input[type="checkbox"], input[type="radio"], input[type="range"], input[type="file"], input[type="hidden"]')) return null;
+  return el;
+}
+
+function syncKeyboardChrome() {
+  const field = editingField();
+  const inner = window.innerHeight;
+  const vv = window.visualViewport;
+  if (!field || inner > layoutHeight) layoutHeight = inner;
+  const visualCover = vv ? Math.max(0, inner - vv.height) : 0;
+  const layoutCover = Math.max(0, layoutHeight - inner);
+  const open = !!field && (visualCover > 120 || layoutCover > 120);
+  document.documentElement.classList.toggle('keyboard-open', open);
+  if (open && !keyboardWasOpen) {
+    requestAnimationFrame(() => field.scrollIntoView({ block: 'center', inline: 'nearest' }));
+  }
+  keyboardWasOpen = open;
+}
+
+window.addEventListener('resize', syncKeyboardChrome);
+window.visualViewport?.addEventListener('resize', syncKeyboardChrome);
+window.visualViewport?.addEventListener('scroll', syncKeyboardChrome);
+document.addEventListener('focusin', () => setTimeout(syncKeyboardChrome, 50));
+document.addEventListener('focusout', () => setTimeout(syncKeyboardChrome, 50));
+
 refresh();
 navigate();

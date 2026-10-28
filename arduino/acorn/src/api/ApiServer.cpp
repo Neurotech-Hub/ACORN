@@ -146,6 +146,7 @@ void deviceJson(JsonObject o) {
   o["id"] = DeviceConfig::deviceId();
   o["name"] = cfg.name;
   o["firmware_version"] = ACORN_FIRMWARE_VERSION;
+  o["ignore_magnet"] = cfg.ignoreMagnet;
   json::batteryModel(o["battery_model"].to<JsonObject>(), cfg.batteryModel);
 }
 
@@ -230,7 +231,12 @@ void putDevice() {
     return fail(422, err::BATTERY_MODEL_INVALID, "The battery model is fixed in this firmware and cannot be edited.",
                 "battery_model");
   }
+  JsonVariantConst magnet = b["ignore_magnet"];
+  if (!magnet.isNull() && !magnet.is<bool>()) {
+    return fail(422, err::IGNORE_MAGNET_INVALID, "ignore_magnet must be true or false.", "ignore_magnet");
+  }
   if (!name.isNull()) DeviceConfig::setName(name.as<const char*>());
+  if (!magnet.isNull()) DeviceConfig::setIgnoreMagnet(magnet.as<bool>());
   JsonDocument doc;
   deviceJson(okData(doc));
   send(200, doc);

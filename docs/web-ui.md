@@ -89,14 +89,14 @@ Five sections; bottom tab bar on phones, sidebar at ≥900 px.
 | **Programs** | Program library (activate/deactivate, duplicate, JSON upload/download, delete) and the program editor: events (RANGE/POINT, fixed/random), 24 h timeline, device-side validation, schedule preview, Save & Apply |
 | **Audio** | First-class field test player (source, volume, Play/Stop, built-in tone), WAV library with metadata, upload, guarded delete |
 | **Data** | Environmental readings, logging enable + interval (presets and custom minutes), playback/environment CSV download and recent-rows preview |
-| **Device** | Identity (ID, name), time (sync from browser, UTC offset), site location (phone GPS or manual entry, stored in `/config/site.json`), battery discharge plot (read-only voltage→percent model with the current reading marked), firmware OTA, diagnostics |
+| **Device** | Identity (ID, name), time (sync from browser, UTC offset), site location (phone GPS or manual entry, stored in `/config/site.json`), battery discharge plot (read-only voltage→percent model with the current reading marked), firmware OTA, diagnostics, developer overrides (ignore magnet) |
 
 Principles carried from the spec:
 
 - **UI is an API client.** No schedule is computed in the browser; preview, next playback,
   active/quiet window and validation all come from the device. The editor timeline only draws
   the event definitions.
-- **Staged edits, one apply.** Program, environment, name, offset and site location edits
+- **Staged edits, one apply.** Program, environment, name, offset, site location and developer edits
   are held in the browser until *Save & Apply*; leaving with unsaved edits asks first.
 - **Viewing is non-destructive.** Nothing mutates on page load.
 - **Device clock, not browser clock**, drives countdowns (`store.deviceNow()`).
@@ -120,7 +120,7 @@ The UI maps these paths onto form fields.
 |---|---|
 | `GET /status` | Aggregate dashboard model (see fields below). Polled every 5 s (1 s while playing). |
 | `POST /session/extend` | *Added.* Resets the AP inactivity timer ("Stay connected"). |
-| `GET/PUT /device` | `{ id, name, firmware_version, battery_model: { name, points: [[volts, pct], …] } }`. PUT accepts `name` only; the battery model is fixed in firmware (12.0 V = 100%) and a `battery_model` field is rejected with 422 `BATTERY_MODEL_INVALID`. |
+| `GET/PUT /device` | `{ id, name, firmware_version, ignore_magnet, battery_model: { name, points: [[volts, pct], …] } }`. PUT accepts `name` and `ignore_magnet` (bool). The battery model is fixed in firmware (12.0 V = 100%) and a `battery_model` field is rejected with 422 `BATTERY_MODEL_INVALID`. A non-boolean `ignore_magnet` is 422 `IGNORE_MAGNET_INVALID`. |
 | `GET/PUT /time` | PUT `{ utc?: "…Z", utc_offset_minutes?: int }`; returns `{ utc, local, utc_offset_minutes, rtc_valid }` |
 | `GET /audio` | `{ files: [{ name, path, size_bytes, duration_ms, sample_rate, bits_per_sample, channels, valid, error?, referenced_by[], in_active_program }], rules }` |
 | `POST /audio` | multipart field `file`; validates WAV header |
@@ -157,7 +157,7 @@ The UI maps these paths onto form fields.
 
 Error codes used in addition to `init.md` §48: `AUDIO_IN_USE`, `AUDIO_NAME_TOO_LONG`,
 `PROGRAM_ID_EXISTS`, `PROGRAM_ACTIVE`, `PROGRAM_LIMIT_EXCEEDED`, `DEVICE_NAME_INVALID`,
-`BATTERY_MODEL_INVALID`, `TIME_INVALID`, `TIME_OFFSET_INVALID`, `ENV_CONFIG_INVALID`,
+`BATTERY_MODEL_INVALID`, `IGNORE_MAGNET_INVALID`, `TIME_INVALID`, `TIME_OFFSET_INVALID`, `ENV_CONFIG_INVALID`,
 `ENV_INTERVAL_INVALID`, `SITE_INVALID`, `VOLUME_INVALID`, `UPLOAD_INVALID`, `UPLOAD_TOO_LARGE`, `NOT_FOUND`.
 
 Mock limits (to be confirmed by memory testing in Phase 3, `init.md` §55): 16 programs,
@@ -166,7 +166,7 @@ Mock limits (to be confirmed by memory testing in Phase 3, `init.md` §55): 16 p
 **AP activity (decided in Phase 4):** neither `GET /status` polling nor a connected phone counts as
 activity, on the mock or the device. Any other API request does, including `POST /session/extend`.
 An idle open page therefore still times out after 10 min, with a 60 s "Stay connected" warning.
-The device also ends the session when the enclosure door closes.
+The device also ends the session when the enclosure door closes, unless Developer → Ignore magnet is on.
 
 ---
 

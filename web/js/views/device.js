@@ -1,4 +1,4 @@
-// Device: identity, time, site location, battery model, firmware (OTA) and diagnostics.
+// Device: identity, time, site location, battery model, firmware (OTA), diagnostics and developer overrides.
 
 import { api } from '../api.js';
 import { store, refresh, deviceNow } from '../store.js';
@@ -12,10 +12,10 @@ const OFFSETS = Array.from({ length: (840 + 720) / 15 + 1 }, (_, i) => -720 + i 
 export function mount(el) {
   let dev = null;
   let fw = null;
-  const staged = { name: null, offset: null, site: null };
-  const saved = { name: null, offset: null, site: null };
+  const staged = { name: null, offset: null, site: null, developer: null };
+  const saved = { name: null, offset: null, site: null, developer: null };
   const dirtyOf = (k) => JSON.stringify(staged[k]) !== JSON.stringify(saved[k]);
-  const anyDirty = () => ['name', 'offset', 'site'].some(dirtyOf);
+  const anyDirty = () => ['name', 'offset', 'site', 'developer'].some(dirtyOf);
 
   const identityHost = h('div');
   const timeHost = h('div');
@@ -25,6 +25,7 @@ export function mount(el) {
   const batteryHost = h('div');
   const firmwareHost = h('div');
   const diagHost = h('div');
+  const developerHost = h('div');
   let clockEls = null;
 
   function saveRow(key, onSave) {
@@ -451,6 +452,31 @@ export function mount(el) {
     renderFirmware();
   }
 
+  // ---- developer ------------------------------------------------------------------------
+  function renderDeveloper() {
+    const toggle = h('input', { type: 'checkbox', checked: staged.developer.ignoreMagnet, 'aria-label': 'Ignore magnet' });
+    toggle.onchange = () => {
+      staged.developer = { ...staged.developer, ignoreMagnet: toggle.checked };
+      actions.replaceWith(actions = saveRow('developer', saveDeveloper));
+    };
+    let actions = saveRow('developer', saveDeveloper);
+    replace(developerHost, h('div', { class: 'card form' },
+      h('label', { class: 'switch' }, toggle, h('span', { class: 'track' }), 'Ignore magnet'),
+      h('p', { class: 'small muted' }, 'When on, closing the enclosure does not end this session or put the device to sleep. Opening it still starts a session, and the door can still wake the device from sleep.'),
+      actions));
+  }
+
+  async function saveDeveloper() {
+    try {
+      dev = await api.updateDevice({ ignore_magnet: staged.developer.ignoreMagnet });
+      saved.developer = staged.developer = { ignoreMagnet: !!dev.ignore_magnet };
+      toast(saved.developer.ignoreMagnet
+        ? 'Magnet ignored. Closing the enclosure will not sleep the device.'
+        : 'Magnet sensor restored.', 'ok');
+      renderDeveloper();
+    } catch (e) { toastError(e); }
+  }
+
   // ---- diagnostics ----------------------------------------------------------------------
   function renderDiag() {
     const st = store.status;
@@ -471,6 +497,7 @@ export function mount(el) {
     renderBattery();
     renderFirmware();
     renderDiag();
+    renderDeveloper();
   }
 
   async function load() {
@@ -480,6 +507,7 @@ export function mount(el) {
       const st = store.status || (await refresh());
       saved.name = staged.name = dev.name;
       saved.offset = staged.offset = st.time.utc_offset_minutes;
+      saved.developer = staged.developer = { ignoreMagnet: !!dev.ignore_magnet };
       replace(el, 
         pageHead('Device'),
         section('Identity'), identityHost,
@@ -488,6 +516,7 @@ export function mount(el) {
         section('Battery'), batteryHost,
         section('Firmware'), firmwareHost,
         section('Diagnostics'), diagHost,
+        section('Developer'), developerHost,
       );
       renderAll();
     } catch (e) {

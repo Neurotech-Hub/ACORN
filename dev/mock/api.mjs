@@ -96,7 +96,11 @@ export async function handleApi(req, res, url, ctx) {
         if (b.battery_model !== undefined) {
           return fail(res, 422, 'BATTERY_MODEL_INVALID', 'The battery model is fixed in this firmware and cannot be edited.', 'battery_model');
         }
+        if (b.ignore_magnet !== undefined && typeof b.ignore_magnet !== 'boolean') {
+          return fail(res, 422, 'IGNORE_MAGNET_INVALID', 'ignore_magnet must be true or false.', 'ignore_magnet');
+        }
         if (b.name !== undefined) dev.device.name = b.name;
+        if (b.ignore_magnet !== undefined) dev.device.ignore_magnet = b.ignore_magnet;
         return ok(res, { ...dev.device, firmware_version: dev.firmware.version, battery_model: dev.batteryModel });
       }
     }

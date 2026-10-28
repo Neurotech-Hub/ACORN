@@ -422,8 +422,14 @@ void loop() {
     ConfigSession::start();
   }
   if (HallHardware::wasClosed()) {
-    Serial.println("door closed");
-    ConfigSession::onDoorClosed();
+    // Developer override: keep the configuration session (and therefore stay
+    // awake) when the enclosure is closed. Opening it still starts a session.
+    if (DeviceConfig::get().ignoreMagnet) {
+      Serial.println("door closed (ignored)");
+    } else {
+      Serial.println("door closed");
+      ConfigSession::onDoorClosed();
+    }
   }
 
   pollSerial();

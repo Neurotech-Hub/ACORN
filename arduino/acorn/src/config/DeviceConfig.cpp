@@ -34,6 +34,7 @@ void begin() {
     settings.envIntervalMinutes = EnvSchedule::DEFAULT_INTERVAL_MINUTES;
   }
   settings.activeProgramId = prefs.getString("active", DEFAULT_ACTIVE_PROGRAM);
+  settings.ignoreMagnet = prefs.getBool("ign_mag", false);
 }
 
 const DeviceSettings& get() { return settings; }
@@ -81,6 +82,11 @@ bool setActiveProgram(const String& id) {
   settings.activeProgramId = id;
   if (id.isEmpty()) return prefs.putString("active", "") >= 0;
   return prefs.putString("active", id) > 0;
+}
+
+bool setIgnoreMagnet(bool ignore) {
+  settings.ignoreMagnet = ignore;
+  return prefs.putBool("ign_mag", ignore) > 0;
 }
 
 }  // namespace DeviceConfig

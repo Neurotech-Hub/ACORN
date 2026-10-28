@@ -4,8 +4,9 @@
 #include <AcornCore.h>
 
 // Device state that belongs in NVS rather than on the SD card (init.md 3.3):
-// name, UTC offset, battery calibration, environmental logging and the active
-// Program ID. The battery voltage-to-percent model is fixed in firmware.
+// name, UTC offset, battery calibration, environmental logging, the active
+// Program ID, and developer overrides. The battery voltage-to-percent model
+// is fixed in firmware.
 
 namespace acorn {
 
@@ -17,6 +18,7 @@ struct DeviceSettings {
   bool envEnabled = true;
   uint16_t envIntervalMinutes = EnvSchedule::DEFAULT_INTERVAL_MINUTES;
   String activeProgramId;  // "" = none
+  bool ignoreMagnet = false;  // door close does not end the config session
 };
 
 namespace DeviceConfig {
@@ -36,6 +38,7 @@ bool setUtcOffset(int32_t minutes);
 bool setBatteryCalibration(float scale);
 bool setEnvironment(bool enabled, uint16_t intervalMinutes);
 bool setActiveProgram(const String& id);
+bool setIgnoreMagnet(bool ignore);
 
 }  // namespace DeviceConfig
 }  // namespace acorn

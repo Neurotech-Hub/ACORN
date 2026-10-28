@@ -107,7 +107,7 @@ export class MockDevice {
     this.clockOffsetMs = 0;
     this.rtcValid = true;
     this.utcOffsetMinutes = -300;
-    this.device = { id: 'ACORN-A3F29C', name: 'SQUIRREL_SITE_07' };
+    this.device = { id: 'ACORN-A3F29C', name: 'SQUIRREL_SITE_07', ignore_magnet: false };
     this.firmware = { version: '0.1.0-dev', build_utc: '2026-09-27T21:00:00Z', running_partition: 'app0', next_partition: 'app1', slot_size_bytes: 6_553_600 };
     this.batteryVoltage = 11.84;
     this.batteryModel = structuredClone(DEFAULT_BATTERY_MODEL);

@@ -138,9 +138,16 @@ async function main() {
   const dev = await call('GET', '/device');
   okEnvelope('GET /device', dev);
   const d = dev.json?.data;
-  check('device {id,name,firmware_version,battery_model{name,points}}',
-    hasKeys(d, ['id', 'name', 'firmware_version', 'battery_model']) && Array.isArray(d.battery_model?.points));
+  check('device {id,name,firmware_version,ignore_magnet,battery_model{name,points}}',
+    hasKeys(d, ['id', 'name', 'firmware_version', 'battery_model']) && typeof d.ignore_magnet === 'boolean' &&
+    Array.isArray(d.battery_model?.points));
   errEnvelope('PUT /device bad name', await call('PUT', '/device', { json: { name: 'bad name!' } }), 422, 'DEVICE_NAME_INVALID', 'name');
+  errEnvelope('PUT /device bad ignore_magnet', await call('PUT', '/device', { json: { ignore_magnet: 'yes' } }),
+    422, 'IGNORE_MAGNET_INVALID', 'ignore_magnet');
+  const magnetOn = await call('PUT', '/device', { json: { ignore_magnet: true } });
+  okEnvelope('PUT /device ignore_magnet', magnetOn);
+  check('ignore_magnet round trip', magnetOn.json?.data?.ignore_magnet === true);
+  await call('PUT', '/device', { json: { ignore_magnet: false } });
   errEnvelope('PUT /device bad battery model', await call('PUT', '/device', { json: { battery_model: { name: 'x', points: [[10, 0], [12, 100]] } } }),
     422, 'BATTERY_MODEL_INVALID', 'battery_model');
   const tm = await call('GET', '/time');
