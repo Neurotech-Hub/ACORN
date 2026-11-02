@@ -107,6 +107,13 @@ Default build (`ACORN_STAY_AWAKE 0`): event-driven (init.md sections 40, 56).
   - BTN_02: battery flashes on LED_R.
   The device stays awake while audio plays, LEDs flash, or the next wake is under 3 s away. Wi-Fi is never started on these wakes.
 - **Door → CONFIG.** A door-open wake, a door-open edge while awake, or a reset with the door open starts a configuration session: AP `ACORN-xxxxxx`, captive portal, web UI at `http://192.168.4.1/`, LED_G on. Scheduled playback and sampling continue. The session ends on door close or after 10 minutes without API activity. A door left open is armed to wake the device when it closes (see [`docs/hardware.md`](../docs/hardware.md)).
+- **Critical battery gate.** Below 8.0 V (released only above 8.5 V, kept across sleep) the pack is nearly dead and a current pulse could brown the device out, so the amp, Wi-Fi, SD and sensors stay off and nothing is logged:
+  - the gate is read right after boot, before any SD, sensor, amp or radio work, and again every 5 s while awake (the pack sags under load);
+  - an RTC wake (playback or sample) goes straight back to sleep, silently;
+  - a door open, BTN_01, BTN_02 or a power-on gives a fast red blink (about 5 s, 60 ms on/off), then sleeps; no AP, no playback. A trip mid-session or mid-playback ends it, drops the row instead of logging it, and does the same;
+  - sleep arms no schedule alarm (no wake storm): only door, buttons and a 30 min timer re-check. When the pack recovers the normal schedule resumes;
+  - an invalid battery reading counts as critical, so BTN_02's single long error flash is replaced by the fast blink;
+  - field builds only: the bench build (`ACORN_STAY_AWAKE=1`) skips it, and `-DACORN_BATTERY_GATE=0` turns it off for a default build run from USB without a battery.
 - **Console access.** After a reset the device stays awake for 30 s, and every serial keystroke extends this by 30 s, so you can type commands before it sleeps. On deep-sleep wakes it does not wait for a USB host.
 
 Bench build: `ACORN_STAY_AWAKE=1` keeps a permanent session (AP, UI and API always up; never sleeps unless you type `sleep`). Set it in `AppConfig.h`, or with arduino-cli:
@@ -144,7 +151,7 @@ Run on the prototype with the default build, a charged battery, an SD card holdi
 10. **UI reports next playback.** Status shows the next playback and matches `wake`.
 11. **Edit and validate.** Create an overlapping event and confirm the editor shows the validation error and blocks saving. Then fix it and save.
 12. **BTN_01 hierarchy.** With the program active, BTN_01 plays the next event's WAV. With no program, it plays `playback.wav`. With `playback.wav` removed, it plays the tone. Repeat from sleep (the button wakes the device).
-13. **BTN_02 battery.** Flash count equals `ceil(percent / 10)`. Disconnect the battery sense (or use an invalid reading) to see the single long flash. Repeat from sleep.
+13. **BTN_02 battery.** Flash count equals `ceil(percent / 10)`. Repeat from sleep. (An invalid reading is below the critical gate, see item 17, and gives the fast blink rather than a single long flash.)
 14. **Missing SD blocks cleanly.** Remove the card: status shows `SD_NOT_PRESENT` (blocking), no scheduled playback runs, the device still sleeps and wakes, and the UI, tone test and OTA still work.
 15. **Browser OTA.** Upload a new `acorn.ino.bin` from Device → Firmware. The device reboots into the other slot and the UI reconnects with the new version.
 16. **Hall config mode.**
@@ -153,6 +160,12 @@ Run on the prototype with the default build, a charged battery, an SD card holdi
     - Leave it open for 10 minutes without using the UI: the session times out, the log shows `door open: wake on close`, and the device sleeps.
     - Close the door: the log shows `door closed while asleep`, and the device goes back to sleep.
     - Open it again: a new session starts.
+17. **Critical battery gate.** Use a bench supply on the battery input and step it through 8.0 V.
+    - Above 8.5 V everything behaves normally.
+    - Below 8.0 V, open the door: the red LED blinks fast for about 5 s, no AP appears, and the device sleeps. BTN_01 and BTN_02 do the same.
+    - Let a scheduled wake or env sample fall due: the device boots, does nothing visible, and sleeps again. The SD card gets no new rows.
+    - With the supply at 8.3 V after a trip, it stays tripped; at 8.5 V or above it resumes the schedule (at the next 30 min re-check, or on a door or button wake).
+    - Sag the supply below 8.0 V during a session or playback: the session ends or the audio stops, the LED blinks fast, and no row is logged.
 
 ### API contract
 

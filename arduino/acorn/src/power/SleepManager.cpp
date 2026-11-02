@@ -10,6 +10,19 @@
 namespace acorn {
 namespace SleepManager {
 
+namespace {
+
+// Section 42 steps 2-5: audio, SD, Wi-Fi and LEDs into their safe states.
+void shutDownPeripherals() {
+  AudioHardware::prepareForSleep();
+  SdHardware::unmount();
+  SdHardware::prepareForSleep();
+  WifiApHardware::stop();
+  LedService::prepareForSleep();
+}
+
+}  // namespace
+
 WakePlanner::Wake nextWake(int64_t nowUtc) {
   ScheduledEvent next;
   const int64_t playback = DeviceState::nextPlayback(nowUtc, next) ? next.utc : WakePlanner::NONE;
@@ -37,11 +50,7 @@ bool enter(String& reason) {
 
   // Section 42 steps 1-9.
   PlaybackService::stop();
-  AudioHardware::prepareForSleep();
-  SdHardware::unmount();
-  SdHardware::prepareForSleep();
-  WifiApHardware::stop();
-  LedService::prepareForSleep();
+  shutDownPeripherals();
 
   // Steps 10-11.
   RtcHardware::clearAlarmFlag();
@@ -63,6 +72,25 @@ bool enter(String& reason) {
   Serial.flush();
 
   // Step 12. Returns only if no wake source could be armed.
+  const SleepArmResult r = SleepHardware::enter(cfg);
+  reason = r.anyArmed() ? "sleep entry failed" : "no wake source could be armed";
+  return false;
+}
+
+bool enterCritical(String& reason) {
+  shutDownPeripherals();
+  // No schedule alarm: a dense schedule would otherwise wake (and boot) the
+  // device at every event even though nothing may run. Door, buttons and a
+  // slow timer re-check are the only wake sources.
+  RtcHardware::disableAlarm();
+  RtcHardware::clearAlarmFlag();
+  SleepConfig cfg;
+  cfg.hallWakeOnClose = true;
+  cfg.wakeOnRtcAlarm = false;
+  cfg.timerUs = static_cast<uint64_t>(CRITICAL_RECHECK_S) * 1000000ULL;
+  Serial.printf("sleep: battery critical, buttons/door only, re-check in %d min%s\n",
+                static_cast<int>(CRITICAL_RECHECK_S / 60), HallHardware::isDoorOpen() ? ", door open: wake on close" : "");
+  Serial.flush();
   const SleepArmResult r = SleepHardware::enter(cfg);
   reason = r.anyArmed() ? "sleep entry failed" : "no wake source could be armed";
   return false;

@@ -13,7 +13,7 @@ All pull-ups/pull-downs are in hardware. Firmware leaves internal pulls disabled
 | GPIO | Signal | Purpose | Polarity / notes |
 |---:|---|---|---|
 | 1 | `VBAT_ADC` | Battery voltage ADC | 1M (top) / 249k (bottom) divider, 100nF filter; Vbat = Vadc × 1249/249 |
-| 2 | `LED_R` | Red LED (D3, D4) | Battery indication (BTN_02); solid while the SD card is not mounted. OFF during sleep |
+| 2 | `LED_R` | Red LED (D3, D4) | Battery indication (BTN_02); solid while the SD card is not mounted; fast blink = battery below 8 V. OFF during sleep |
 | 4 | `I2C_SDA` | I2C data | RTC + environmental sensors |
 | 5 | `I2C_SCL` | I2C clock | RTC + environmental sensors |
 | 6 | `RTC_MFP` | MCP7940N alarm | **Active LOW** (open drain, 100k pull-up); deep-sleep wake |

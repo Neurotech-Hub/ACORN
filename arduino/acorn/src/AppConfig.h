@@ -12,6 +12,14 @@
 #define ACORN_STAY_AWAKE 0
 #endif
 
+// 1 (default for field builds): below the critical-battery gate (AcornCore
+// BatteryGate.h) the device shuts off the amp, radio and SD writes and sleeps.
+// Off for the bench build, which is usually USB-powered without a battery; set
+// -DACORN_BATTERY_GATE=0 for a default build you want to run without a pack.
+#ifndef ACORN_BATTERY_GATE
+#define ACORN_BATTERY_GATE (!ACORN_STAY_AWAKE)
+#endif
+
 namespace acorn {
 namespace app {
 

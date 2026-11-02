@@ -29,5 +29,11 @@ void onTimeChanged();
 // door close.
 bool enter(String& reason);
 
+// Critical-battery sleep: skips the next-event check and arms no schedule
+// alarm. Wakes only on door, buttons, or after CRITICAL_RECHECK_S to see
+// whether the pack has recovered. The caller stops playback first.
+constexpr int64_t CRITICAL_RECHECK_S = 1800;
+bool enterCritical(String& reason);
+
 }  // namespace SleepManager
 }  // namespace acorn

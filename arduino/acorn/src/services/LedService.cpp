@@ -109,6 +109,8 @@ void flashBattery(uint8_t count) {
 
 void flashBatteryError() { startRedFlash(ERROR_ON_MS, 0, 1); }
 
+void flashCritical() { startRedFlash(CRITICAL_ON_MS, CRITICAL_OFF_MS, CRITICAL_COUNT); }
+
 bool isFlashing() { return flashPending || LedHardware::isBlinking(); }
 
 void allOff() {

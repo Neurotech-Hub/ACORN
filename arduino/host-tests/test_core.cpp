@@ -428,6 +428,20 @@ TEST(battery_percent_and_btn02_flashes) {
   CHECK(!bad.isValid());
 }
 
+TEST(battery_gate_hysteresis) {
+  // Fresh: trips only below 8.0 V.
+  CHECK(!BatteryGate::critical(false, true, 12.0f));
+  CHECK(!BatteryGate::critical(false, true, 8.0f));
+  CHECK(BatteryGate::critical(false, true, 7.99f));
+  // Already critical: stays so until it recovers to 8.5 V.
+  CHECK(BatteryGate::critical(true, true, 8.0f));
+  CHECK(BatteryGate::critical(true, true, 8.49f));
+  CHECK(!BatteryGate::critical(true, true, 8.5f));
+  // An unknown pack state is treated as critical, never as healthy.
+  CHECK(BatteryGate::critical(false, false, 12.0f));
+  CHECK(BatteryGate::critical(true, false, 12.0f));
+}
+
 TEST(battery_percent_monotonic) {
   BatteryModel m = BatteryModel::defaultM12();
   int32_t last = 101;

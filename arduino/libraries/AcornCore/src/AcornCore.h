@@ -2,6 +2,7 @@
 
 // Umbrella header for the hardware-independent ACORN core.
 
+#include "BatteryGate.h"
 #include "BatteryModel.h"
 #include "Csv.h"
 #include "EnvSchedule.h"

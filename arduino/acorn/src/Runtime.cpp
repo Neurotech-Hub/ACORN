@@ -35,7 +35,18 @@ constexpr uint32_t SERIAL_AWAKE_MS = 30000;    // stay awake after console input
 // Kept across deep sleep so a quick re-wake never repeats an event or sample.
 RTC_DATA_ATTR int64_t lastExecutedUtc = 0;       // scheduled time of the last executed event
 RTC_DATA_ATTR int64_t lastEnvBoundaryUtc = -1;   // boundary of the last env sample
+// Critical-battery gate state, kept across deep sleep for its hysteresis.
+RTC_DATA_ATTR bool batteryCritical = false;
 
+constexpr uint32_t BATTERY_CHECK_MS = 5000;        // gate re-check while awake (also under load)
+constexpr uint32_t CRITICAL_SLEEP_RETRY_MS = 10000;
+
+bool criticalMode = false;     // gate tripped: only the fast-blink + sleep loop runs
+bool servicesUp = false;       // setup() completed the full initialization
+bool pendingCritical = false;  // tripped somewhere; loop() shuts everything down
+bool pendingBlink = false;     // someone is at the device, show the fast blink
+uint32_t lastBatteryCheckMs = 0;
+uint32_t criticalSleepRetryMs = 0;
 bool inBackground = false;
 uint32_t lastScheduleCheckMs = 0;
 uint32_t awakeUntilMs = 0;
@@ -72,6 +83,64 @@ void printStatus() {
   Serial.println();
 }
 
+// ---- critical-battery gate ------------------------------------------------------
+
+// Below the gate the amp, radio and SD writes are not allowed (a current pulse
+// could brown the device out). Returns false when the gate has tripped; the
+// loop then shuts everything down. Never touches the session or playback
+// itself, so it is safe to call from request handlers and background work.
+// `userPresent`: someone is at the device, so the fast red blink is shown.
+bool applyBatteryGate(const BatteryState& b, bool userPresent) {
+#if ACORN_BATTERY_GATE
+  batteryCritical = BatteryGate::critical(batteryCritical, b.valid, b.voltage);
+  if (batteryCritical) {
+    pendingCritical = true;
+    pendingBlink = pendingBlink || userPresent;
+    return false;
+  }
+#else
+  (void)b;
+  (void)userPresent;
+#endif
+  return true;
+}
+
+bool batteryGateAllows(bool userPresent) { return applyBatteryGate(BatteryService::read(), userPresent); }
+
+// Stops everything that draws current; loop() then only blinks (if asked) and sleeps.
+// Nothing is logged: an SD write is exactly what could brown the device out.
+void enterCriticalMode(bool blink) {
+  pendingCritical = false;
+  criticalMode = true;
+  if (servicesUp) {
+    blink = blink || ConfigSession::active();
+    ConfigSession::end();
+    PlaybackService::stop();
+  }
+  const BatteryState& b = BatteryService::last();
+  const String reading = b.valid ? String(b.voltage, 2) + " V" : String("invalid reading");
+  Serial.printf("battery critical (%s): amp, Wi-Fi and SD off%s\n", reading.c_str(), blink ? ", fast blink" : "");
+  LedService::setSdMissing(false);  // the critical blink has the LED, not the SD indicator
+  if (blink) LedService::flashCritical();
+}
+
+void criticalLoop() {
+  ButtonHardware::update();
+  HallHardware::update();
+  LedService::update();
+  if (ButtonHardware::wasPressed(Button::Audio) || ButtonHardware::wasPressed(Button::Battery) ||
+      HallHardware::wasOpened()) {
+    if (!LedService::isFlashing()) LedService::flashCritical();
+  }
+  if (!LedService::isFlashing() && static_cast<int32_t>(millis() - criticalSleepRetryMs) >= 0) {
+    criticalSleepRetryMs = millis() + CRITICAL_SLEEP_RETRY_MS;
+    String reason;
+    SleepManager::enterCritical(reason);  // returns only if sleep failed; retried, never restarted
+    Serial.printf("critical sleep failed: %s\n", reason.c_str());
+  }
+  delay(2);
+}
+
 // ---- playback logging -----------------------------------------------------------
 
 void logFinished() {
@@ -81,6 +150,8 @@ void logFinished() {
                   r.request.tone ? "builtin:sine" : r.request.path.c_str(), r.result.c_str(), r.durationMs,
                   r.errorCode.length() ? " " : "", r.errorCode.c_str());
     if (!DeviceState::sdReady()) continue;  // e.g. BTN_01 sine test without SD
+    const BatteryState battery = BatteryService::read();
+    if (!applyBatteryGate(battery, false)) continue;  // nearly dead: no SD write
     Csv::PlaybackRow row;
     row.actualUtc = TimeService::isoUtc(r.startedUtc).c_str();
     if (r.request.scheduledUtc >= 0) row.scheduledUtc = TimeService::isoUtc(r.request.scheduledUtc).c_str();
@@ -94,7 +165,7 @@ void logFinished() {
     row.result = r.result.c_str();
     row.errorCode = r.errorCode.c_str();
     // Telemetry is sampled after playback so the amplifier load is off.
-    row.telemetry = makeTelemetry(BatteryService::read(), EnvironmentService::sample());
+    row.telemetry = makeTelemetry(battery, EnvironmentService::sample());
     PlaybackLogger::append(row);
   }
 }
@@ -102,6 +173,7 @@ void logFinished() {
 // ---- scheduled playback -----------------------------------------------------------
 
 void startScheduled(const Scheduler& s, const ScheduledEvent& due) {
+  if (!batteryGateAllows(false)) return;  // the amp could brown the device out
   const Event& ev = s.program().events[due.eventIndex];
   PlaybackRequest req;
   req.source = PlaybackSource::Scheduled;
@@ -179,7 +251,9 @@ void checkEnvironment() {
   }
   if (now < envNextUtc || PlaybackService::isPlaying()) return;
   const int64_t boundary = EnvSchedule::sampleAtOrBefore(now, envInterval);
-  const Csv::Telemetry t = makeTelemetry(BatteryService::read(), EnvironmentService::sample());
+  const BatteryState battery = BatteryService::read();
+  if (!applyBatteryGate(battery, false)) return;  // nearly dead: no sample, no SD write
+  const Csv::Telemetry t = makeTelemetry(battery, EnvironmentService::sample());
   if (DeviceState::sdReady()) EnvironmentLogger::append(boundary, t);
   lastEnvBoundaryUtc = boundary;
   envNextUtc = EnvSchedule::nextSampleAfter(now, envInterval);
@@ -190,6 +264,7 @@ void checkEnvironment() {
 // init.md section 30: next scheduled event's WAV -> /audio/playback.wav -> sine.
 void onButton1() {
   if (PlaybackService::isPlaying()) return;
+  if (!batteryGateAllows(true)) return;
   PlaybackRequest req;
   req.source = PlaybackSource::ManualTest;
   req.volume = app::FALLBACK_VOLUME;
@@ -232,6 +307,7 @@ void onButton1() {
 // init.md section 31.
 void onButton2() {
   const BatteryState b = BatteryService::read();
+  if (!applyBatteryGate(b, true)) return;  // loop() shows the critical blink instead
   const uint8_t flashes = BatteryIndication::flashCount(b.valid, b.percent);
   if (flashes) {
     Serial.printf("battery %.2f V %d%% -> %u flashes\n", b.voltage, static_cast<int>(b.percent), flashes);
@@ -269,6 +345,7 @@ void maybeSleep() {
   if (PlaybackService::isPlaying() || LedService::isFlashing()) return;
   if (scheduledEventPending()) return;
   logFinished();  // a playback that just ended is logged before sleeping
+  if (pendingCritical) return;  // loop() takes the critical path instead
   if (!SleepManager::wakeTooClose(TimeService::nowUtc())) enterSleep();
 #endif
 }
@@ -291,7 +368,7 @@ void runCommand(const String& cmd) {
     enterSleep();
   } else if (cmd == "session") {
     if (ConfigSession::active()) ConfigSession::end();
-    else ConfigSession::start();
+    else if (batteryGateAllows(true)) ConfigSession::start();
   } else if (cmd == "door") {
     const bool open = HallHardware::isDoorOpen();
     Serial.printf("door %s; sleep would arm the Hall wake for door %s\n", open ? "open" : "closed",
@@ -368,7 +445,17 @@ void setup() {
   RtcHardware::begin();
   TimeService::begin();
   BatteryService::begin();
-  BatteryService::read();
+  const BatteryState bootBattery = BatteryService::read();
+
+  // Battery gate before any SD, sensor, amp or radio work: below it the device
+  // does nothing but (for a person at the device) blink fast, then sleep again.
+  const bool personAtDevice = wake == WakeSource::PowerOn || wake == WakeSource::Button1 ||
+                              wake == WakeSource::Button2 || (wake == WakeSource::Hall && HallHardware::isDoorOpen());
+  if (!applyBatteryGate(bootBattery, personAtDevice)) {
+    enterCriticalMode(pendingBlink);
+    return;
+  }
+
   EnvironmentService::begin();
   EnvironmentService::sample();
   DeviceState::begin(wake);
@@ -393,6 +480,7 @@ void setup() {
 
   if (wake == WakeSource::Button1) onButton1();
   if (wake == WakeSource::Button2) onButton2();
+  servicesUp = true;
   Serial.println("type 'help' for console commands");
 }
 
@@ -406,6 +494,10 @@ void background() {
 }
 
 void loop() {
+  if (criticalMode) {
+    criticalLoop();
+    return;
+  }
   ButtonHardware::update();
   HallHardware::update();
   LedService::setSdMissing(!DeviceState::sdReady());
@@ -416,11 +508,17 @@ void loop() {
   ConfigSession::update();
   background();
 
+  // The pack sags under the amp and the radio, so re-check while awake too.
+  if (millis() - lastBatteryCheckMs >= BATTERY_CHECK_MS) {
+    lastBatteryCheckMs = millis();
+    batteryGateAllows(false);
+  }
+
   if (ButtonHardware::wasPressed(Button::Audio)) onButton1();
   if (ButtonHardware::wasPressed(Button::Battery)) onButton2();
   if (HallHardware::wasOpened()) {
     Serial.println("door opened");
-    ConfigSession::start();
+    if (batteryGateAllows(true)) ConfigSession::start();  // else: fast blink, no AP
   }
   if (HallHardware::wasClosed()) {
     // Developer override: keep the configuration session (and therefore stay
@@ -431,6 +529,11 @@ void loop() {
       Serial.println("door closed");
       ConfigSession::onDoorClosed();
     }
+  }
+
+  if (pendingCritical) {
+    enterCriticalMode(pendingBlink);
+    return;
   }
 
   pollSerial();
