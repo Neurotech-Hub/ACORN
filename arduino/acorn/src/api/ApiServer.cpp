@@ -11,6 +11,8 @@
 #include "../config/DeviceConfig.h"
 #include "../config/SiteStore.h"
 #include "../logging/CsvFile.h"
+#include "../logging/EnvironmentLogger.h"
+#include "../logging/PlaybackLogger.h"
 #include "../program/ActiveProgram.h"
 #include "../program/AudioLibrary.h"
 #include "../program/ProgramStore.h"
@@ -748,6 +750,19 @@ void getLogCsv(const String& kind) {
   server->send(200, CSV_TYPE, out);
 }
 
+// DELETE /logs/{playback|environment}: discards every row, keeping the header.
+void clearLog(const String& kind) {
+  if (!requireSd()) return;
+  const bool playback = kind == "playback";
+  if (!(playback ? PlaybackLogger::clear() : EnvironmentLogger::clear())) {
+    return fail(500, err::SD_WRITE_FAILED, "The log could not be cleared.");
+  }
+  DeviceState::refreshSd();
+  JsonDocument doc;
+  logInfoJson(okData(doc), playback ? app::PLAYBACK_LOG : app::ENVIRONMENT_LOG);
+  send(200, doc);
+}
+
 void getFirmware() {
   const FirmwareInfo i = FirmwareService::info();
   JsonDocument doc;
@@ -889,6 +904,9 @@ void dispatch(HTTPMethod m, const String& uri) {
   if (m == HTTP_GET && route == "/logs") return getLogs();
   if (m == HTTP_GET && (route == "/logs/playback" || route == "/logs/environment")) {
     return getLogCsv(route.substring(6));
+  }
+  if (m == HTTP_DELETE && (route == "/logs/playback" || route == "/logs/environment")) {
+    return clearLog(route.substring(6));
   }
 
   if (route == "/firmware") {

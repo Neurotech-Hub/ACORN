@@ -4,7 +4,7 @@ import { api } from '../api.js';
 import { refresh, deviceNow, offsetMinutes } from '../store.js';
 import {
   h, clear, replace, append, icon, button, busy, pageHead, section, skeleton, errorState, toast, toastError, notice,
-  fmtBytes, fmtRelative, fmtDateTime, toLocalIso, confirmDiscard,
+  fmtBytes, fmtRelative, fmtDateTime, toLocalIso, confirmDiscard, confirmDialog,
 } from '../ui.js';
 
 const PRESETS = [1, 5, 10, 15, 30, 60];
@@ -122,10 +122,36 @@ export function mount(el) {
         h('tbody', null, [...t.rows].reverse().map((r) => h('tr', null, r.map((c) => h('td', null, c)))))));
   }
 
+  async function clearLog(kind, title, btn) {
+    const info = logs[kind];
+    const ok = await confirmDialog({
+      title: `Clear ${title.toLowerCase()}?`,
+      body: [
+        h('p', null, `This permanently deletes all ${info.rows.toLocaleString()} rows from ${info.path} on the SD card. It cannot be undone.`),
+        h('p', { class: 'muted' }, 'Download the log first if you want to keep a copy.'),
+      ],
+      confirm: 'Clear memory', danger: true,
+    });
+    if (!ok) return;
+    await busy(btn, async () => {
+      try {
+        logs[kind] = await api.clearLog(kind);
+        tails[kind] = null;
+        toast(`${title} cleared.`, 'ok');
+        renderLogs();
+        refresh();
+      } catch (e) { toastError(e); }
+    });
+  }
+
   function logCard(kind, title, desc) {
     const info = logs[kind];
-    const tailBtn = button(tails[kind] ? 'Hide recent' : 'Show recent', { size: 'sm', iconName: 'eye' });
+    const open = !!tails[kind];
+    const tailBtn = h('button', { class: `card-foot${open ? ' open' : ''}`, type: 'button', 'aria-expanded': String(open) },
+      open ? 'Hide recent' : 'Show recent', icon('chevron'));
     tailBtn.onclick = () => toggleTail(kind, tailBtn);
+    const clearBtn = button('Clear memory', { size: 'sm', kind: 'danger', iconName: 'trash', disabled: info.rows === 0 });
+    clearBtn.onclick = () => clearLog(kind, title, clearBtn);
     const last = info.modified_utc ? toLocalIso(Date.parse(info.modified_utc), offsetMinutes()) : null;
     return h('div', { class: 'card flush' },
       h('div', { style: { padding: '18px' } },
@@ -136,9 +162,10 @@ export function mount(el) {
           h('dt', null, 'Size'), h('dd', null, fmtBytes(info.size_bytes)),
           h('dt', null, 'Last entry'), h('dd', null, last ? `${fmtDateTime(last)} local` : '—')),
         h('div', { class: 'row' },
-          h('a', { class: 'btn sm primary', href: api.logUrl(kind), download: `${kind}.csv` }, icon('download', 'sm'), 'Download CSV'),
-          tailBtn)),
-      tails[kind] && tailTable(tails[kind]));
+          h('a', { class: 'btn sm primary', href: api.logUrl(kind), download: `${kind}.csv` }, icon('download', 'sm'), 'Download'),
+          clearBtn)),
+      tailBtn,
+      open && tailTable(tails[kind]));
   }
 
   function renderLogs() {
@@ -150,7 +177,7 @@ export function mount(el) {
       return;
     }
     if (!logs) { logsHost.append(skeleton([160, 160])); return; }
-    logsHost.append(h('div', { class: 'grid two' },
+    logsHost.append(h('div', { class: 'grid two', style: { alignItems: 'start' } },
       logCard('playback', 'Playback log', 'Every scheduled and manual playback with program revision, result, battery and environment.'),
       logCard('environment', 'Environment log', 'Periodic temperature, humidity, light and battery samples.')),
     h('p', { class: 'muted small', style: { marginTop: '10px' } }, 'All log timestamps are UTC (ISO-8601, “Z”).'));
@@ -189,5 +216,7 @@ export function mount(el) {
   return {
     isDirty,
     canLeave: async () => !isDirty() || confirmDiscard(),
+    // SD card removed or re-inserted: the logs live on it, so reload them.
+    onSdChange() { Object.keys(tails).forEach((k) => (tails[k] = null)); loadLogs(); },
   };
 }

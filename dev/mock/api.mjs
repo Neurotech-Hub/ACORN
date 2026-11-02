@@ -301,6 +301,11 @@ export async function handleApi(req, res, url, ctx) {
       if (!requireSd(dev, res)) return;
       return ok(res, { playback: dev.logInfo('playback'), environment: dev.logInfo('environment') });
     }
+    if (m === 'DELETE' && (match = /^\/logs\/(playback|environment)$/.exec(route))) {
+      if (!requireSd(dev, res)) return;
+      dev.clearLog(match[1]);
+      return ok(res, dev.logInfo(match[1]));
+    }
     if (m === 'GET' && (match = /^\/logs\/(playback|environment)$/.exec(route))) {
       if (!requireSd(dev, res)) return;
       const tail = parseInt(url.searchParams.get('tail') || '0', 10) || 0;

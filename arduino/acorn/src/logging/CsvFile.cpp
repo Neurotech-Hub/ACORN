@@ -102,6 +102,12 @@ bool ensure(const char* path, const char* header) {
   return writeHeader(fs, path, header);
 }
 
+bool clear(const char* path, const char* header) {
+  fs::FS& fs = SdHardware::fs();
+  if (!fs.exists(app::LOGS_DIR)) fs.mkdir(app::LOGS_DIR);
+  return writeHeader(fs, path, header);  // FILE_WRITE truncates
+}
+
 bool append(const char* path, const char* header, const String& row) {
   if (!ready(path, header)) return false;
   File f = SdHardware::fs().open(path, FILE_APPEND);

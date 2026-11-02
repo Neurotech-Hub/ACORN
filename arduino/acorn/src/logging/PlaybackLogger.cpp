@@ -71,6 +71,13 @@ bool append(const Csv::PlaybackRow& row) {
 
 const LastPlayback& last() { return lastPlayback; }
 
+bool clear() {
+  const bool ok = CsvFile::clear(app::PLAYBACK_LOG, Csv::PLAYBACK_HEADER);
+  if (ok) lastPlayback = LastPlayback{};
+  DeviceState::reportLogWrite(ok);
+  return ok;
+}
+
 void reloadLast() {
   lastPlayback = LastPlayback{};
   const String row = CsvFile::lastRow(app::PLAYBACK_LOG);

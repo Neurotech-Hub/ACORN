@@ -8,6 +8,7 @@
 //   node tools/api-contract.mjs --base http://192.168.4.1      # device AP
 //   add --readonly to skip checks that create/delete temporary files,
 //   write settings back unchanged, or play a short quiet tone.
+//   add --clear-logs to also erase both logs (DELETE /logs/...); never on a device you want to keep data from.
 //
 // Temporary resources (program "contract-tmp", audio "contract-tmp.wav")
 // are always removed again. Time and device name are never changed.
@@ -21,6 +22,7 @@ const opt = (name, def) => {
 };
 const BASE = String(opt('base', 'http://127.0.0.1:8080')).replace(/\/$/, '');
 const READONLY = !!opt('readonly', false);
+const CLEAR_LOGS = !!opt('clear-logs', false);  // erases the device's logs, so opt-in
 const API = `${BASE}/api/v1`;
 
 let passed = 0;
@@ -383,6 +385,19 @@ async function main() {
       'battery_voltage,battery_percent,temperature_c,relative_humidity_pct,ambient_light_lux,latitude,longitude', tail.text.split('\n')[0]);
   check('GET /logs/environment?tail=2 header', envTail.status === 200 &&
     envTail.text.startsWith('timestamp_utc,temperature_c,relative_humidity_pct,ambient_light_lux,battery_voltage,battery_percent,latitude,longitude\n'));
+  const badClear = await call('DELETE', '/logs/bogus');
+  check('DELETE /logs/bogus -> 404 NOT_FOUND', badClear.status === 404 && badClear.json?.error?.code === 'NOT_FOUND', `got ${badClear.status}`);
+  if (CLEAR_LOGS && !READONLY) {
+    for (const kind of ['playback', 'environment']) {
+      const cleared = await call('DELETE', `/logs/${kind}`);
+      okEnvelope(`DELETE /logs/${kind}`, cleared);
+      check(`DELETE /logs/${kind} returns info with rows 0`, hasKeys(cleared.json?.data, infoKeys) && cleared.json.data.rows === 0, JSON.stringify(cleared.json?.data));
+      const after = await call('GET', `/logs/${kind}?tail=5`);
+      check(`GET /logs/${kind} after clear is header only`, after.status === 200 && after.text.trim().split('\n').length === 1, after.text.slice(0, 120));
+    }
+  } else {
+    skip('DELETE /logs/{playback|environment}', 'destructive: erases the logs, pass --clear-logs to run');
+  }
   const coordCells = (row) => row.split(',').slice(-2);
   const coordOk = ([la, lo]) => (la === '' && lo === '') || (/^-?\d+\.\d{6}$/.test(la) && /^-?\d+\.\d{6}$/.test(lo));
   const envRows = envTail.text.trim().split('\n').slice(1);

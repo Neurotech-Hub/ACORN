@@ -165,5 +165,6 @@ export function mount(el) {
   }
 
   load();
-  return {};
+  // SD card removed or re-inserted: reload the program list.
+  return { onSdChange: load };
 }

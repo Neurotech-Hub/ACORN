@@ -12,6 +12,8 @@ bool ensure();
 // Appends a row stamped with the sample boundary; on failure the blocking
 // SD_WRITE_FAILED fault is raised.
 bool append(int64_t boundaryUtc, const Csv::Telemetry& t);
+// Discards every logged sample, leaving just the header.
+bool clear();
 
 }  // namespace EnvironmentLogger
 }  // namespace acorn

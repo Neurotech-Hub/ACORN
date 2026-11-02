@@ -88,7 +88,7 @@ Five sections; bottom tab bar on phones, sidebar at ≥900 px.
 | **Status** | Armed / Not-armed hero with blocking faults and fix links, next playback + countdown, active/quiet window, active program, last playback, battery, SD, environment, device time, connection |
 | **Programs** | Program library (activate/deactivate, duplicate, JSON upload/download, delete) and the program editor: events (RANGE/POINT, fixed/random), 24 h timeline, device-side validation, schedule preview, Save & Apply |
 | **Audio** | First-class field test player (source, volume, Play/Stop, built-in tone), WAV library with metadata, upload, guarded delete |
-| **Data** | Environmental readings, logging enable + interval (presets and custom minutes), playback/environment CSV download and recent-rows preview |
+| **Data** | Environmental readings, logging enable + interval (presets and custom minutes), playback/environment CSV download, a recent-rows footer that expands on tap, and a confirmed "Clear memory" per log |
 | **Device** | Identity (ID, name), time (sync from browser, UTC offset), site location (phone GPS or manual entry, stored in `/config/site.json`), battery discharge plot (read-only voltage→percent model with the current reading marked), firmware OTA, diagnostics, developer overrides (ignore magnet) |
 
 Principles carried from the spec:
@@ -142,6 +142,7 @@ The UI maps these paths onto form fields.
 | `GET/PUT/DELETE /site` | *Added.* Site location in `/config/site.json`: `{ set, latitude, longitude, accuracy_m, source, fixed_utc, note }`, all `null` when unset. PUT `{ latitude, longitude, accuracy_m?, source?: "phone_gps"|"manual"|"prestage", note? }` (default source `manual`); the device sets `fixed_utc` from its clock when the clock is valid. Bad values → 422 `SITE_INVALID` with `field`. DELETE removes the file. All three need the SD card (503 otherwise). |
 | `GET /logs` | `{ playback: { path, size_bytes, rows, modified_utc }, environment: {…} }` |
 | `GET /logs/{playback|environment}` | CSV download; `?tail=N` returns header + last N rows inline. Both logs end with `latitude,longitude` (6 decimals, blank when no site is set). |
+| `DELETE /logs/{playback|environment}` | *Added.* "Clear memory": discards every row, keeping the header. Returns the log's `{ path, size_bytes, rows, modified_utc }`. Needs the SD card (503 otherwise). |
 | `GET /firmware` | *Added.* `{ version, build_utc, running_partition, next_partition, slot_size_bytes }` |
 | `POST /firmware` | multipart `file`; responds before reboot with `{ rebooting: true }` |
 

@@ -119,6 +119,7 @@ export class MockDevice {
     this.sensorFail = false;
     this.playback = null;
     this.manualLog = [];
+    this.clearedAt = { playback: '', environment: '' };  // rows at or before these UTC stamps were cleared
     this.lastActivityMs = now;
     this.idleTimeoutS = 600;
     this.rebootUntil = 0;
@@ -349,7 +350,11 @@ export class MockDevice {
   }
   playbackRows() {
     const live = this.buildPlaybackHistory(this.bootMs + this.clockOffsetMs, this.nowMs());
-    return [...this.historyPlayback, ...live, ...this.manualLog].sort();
+    return [...this.historyPlayback, ...live, ...this.manualLog].sort().filter((r) => r > this.clearedAt.playback);
+  }
+  clearLog(kind) {
+    this.clearedAt[kind] = isoUtc(this.nowMs()) + '~';  // '~' sorts after any row stamped in the same second
+    if (kind === 'playback') this.manualLog = [];
   }
   environmentRows() {
     if (!this.rtcValid) return [];
@@ -357,6 +362,7 @@ export class MockDevice {
     const rows = [];
     const now = this.nowMs();
     for (let t = Math.floor((now - DAY_MS) / iv) * iv; t <= now; t += iv) {
+      if (isoUtc(t) <= this.clearedAt.environment) continue;
       const r = this.readings(t);
       rows.push([isoUtc(t), r.temperature_c ?? '', r.relative_humidity_pct ?? '', r.ambient_light_lux ?? '', this.batteryVoltage.toFixed(2), this.batteryPercent(), ...this.siteCells()].join(','));
     }

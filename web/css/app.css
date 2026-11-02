@@ -370,6 +370,17 @@ table.table { width: 100%; border-collapse: collapse; font-size: 13.5px; font-va
 .table .day-sep td { background: var(--surface-2); font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); padding: 7px 14px; }
 .scroll-y { max-height: 420px; overflow: auto; }
 
+/* Full-width card footer that expands more content below it. */
+.card-foot {
+  display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 44px; padding: 0 18px;
+  border: 0; border-top: 1px solid var(--line); background: var(--surface-2); color: var(--ink-2);
+  font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; text-align: left;
+}
+.card-foot:hover:not(:disabled) { color: var(--ink); background: var(--bg); }
+.card-foot:disabled { opacity: .6; cursor: default; }
+.card-foot .icon { width: 18px; height: 18px; transition: transform .15s ease; }
+.card-foot.open .icon { transform: rotate(180deg); }
+
 /* ---- Lists ---------------------------------------------------------------------------- */
 .list { list-style: none; margin: 0; padding: 0; }
 .list > li { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-bottom: 1px solid var(--line); }

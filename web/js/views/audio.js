@@ -230,6 +230,8 @@ export function mount(el) {
         }, 200);
       }
     },
+    // SD card removed or re-inserted: rescan the library (unless an upload is running).
+    onSdChange() { if (!uploading) load(); },
     unmount() { clearInterval(tick); },
   };
 }

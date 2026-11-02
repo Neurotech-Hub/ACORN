@@ -21,6 +21,8 @@ struct Info {
 // column layout) is renamed to <path>.bak and a fresh file is started.
 bool ensure(const char* path, const char* header);
 bool append(const char* path, const char* header, const String& row);
+// Discards every data row, leaving just the header (the "Clear memory" action).
+bool clear(const char* path, const char* header);
 Info info(const char* path);
 // Header plus the last `rows` data rows (all rows if rows == 0).
 bool tail(const char* path, const char* header, uint32_t rows, String& out);

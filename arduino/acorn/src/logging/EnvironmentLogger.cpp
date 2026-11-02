@@ -19,5 +19,11 @@ bool append(int64_t boundaryUtc, const Csv::Telemetry& t) {
   return ok;
 }
 
+bool clear() {
+  const bool ok = CsvFile::clear(app::ENVIRONMENT_LOG, Csv::ENVIRONMENT_HEADER);
+  DeviceState::reportLogWrite(ok);
+  return ok;
+}
+
 }  // namespace EnvironmentLogger
 }  // namespace acorn

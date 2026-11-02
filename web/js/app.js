@@ -111,9 +111,13 @@ function renderBanner() {
   }
 }
 
+let sdMounted = null;
 subscribe((s) => {
   const st = s.status;
   if (st) {
+    const mounted = !!st.sd.mounted;
+    if (sdMounted !== null && mounted !== sdMounted && current && current.onSdChange) current.onSdChange(mounted);
+    sdMounted = mounted;
     replace(chip, h('b', null, st.device.name), h('span', null, st.device.id));
     sessionRemaining = st.wifi ? st.wifi.idle_remaining_s : null;
     const blocking = st.faults.filter((f) => f.blocking);

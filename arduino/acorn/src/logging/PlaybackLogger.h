@@ -23,6 +23,8 @@ namespace PlaybackLogger {
 bool ensure();
 // Appends a row; on failure the blocking SD_WRITE_FAILED fault is raised.
 bool append(const Csv::PlaybackRow& row);
+// Discards every logged playback (also forgets the "last playback" shown in status).
+bool clear();
 const LastPlayback& last();
 void reloadLast();  // after the SD card (re)mounts
 

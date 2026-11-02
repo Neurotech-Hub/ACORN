@@ -106,6 +106,7 @@ export const api = {
   logs: () => request('GET', '/logs'),
   logTail: (kind, n = 20) => request('GET', `/logs/${kind}?tail=${n}`),
   logUrl: (kind) => `${BASE}/logs/${kind}`,
+  clearLog: (kind) => request('DELETE', `/logs/${kind}`),
 
   firmware: () => request('GET', '/firmware'),
   uploadFirmware: (file, onProgress) => upload('/firmware', file, onProgress),

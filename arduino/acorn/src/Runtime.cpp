@@ -408,6 +408,7 @@ void background() {
 void loop() {
   ButtonHardware::update();
   HallHardware::update();
+  LedService::setSdMissing(!DeviceState::sdReady());
   LedService::update();
   DeviceState::update();
   TimeService::update();
